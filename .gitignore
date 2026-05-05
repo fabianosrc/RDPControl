@@ -1,0 +1,28 @@
+# Build
+dist/
+build/
+output/
+*.zip
+
+# Tests (Pester)
+TestResults.xml
+coverage.xml
+TestResults/
+coverage/
+
+# Logs
+*.log
+*.tmp
+
+# VSCode
+.vscode/*
+!.vscode/launch.json
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Backup
+*.psd1.bak
