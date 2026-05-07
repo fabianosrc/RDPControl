@@ -137,7 +137,7 @@ function Find-BinarySignature {
                     JumpType     = $branchType
                 }
 
-                [byte[]]$replacementBytes = New-ReplacementBytes @replacementParams
+                [byte[]]$replacementBytes = New-ReplacementByte @replacementParams
 
                 Write-Verbose -Message "Replacement sequence generated successfully."
 
