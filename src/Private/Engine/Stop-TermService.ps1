@@ -20,6 +20,11 @@ PS C:\> Stop-TerminalService -TimeoutSeconds 60
 None
 #>
 function Stop-TermService {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSUseShouldProcessForStateChangingFunctions',
+        '',
+        Justification = 'ShouldProcess is handled by the calling public function.'
+    )]
     [CmdletBinding()]
     [OutputType([void])]
     param (

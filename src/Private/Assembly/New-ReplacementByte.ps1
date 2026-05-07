@@ -49,6 +49,11 @@ This function only generates replacement byte sequences.
 It does not modify binaries or perform write operations.
 #>
 function New-ReplacementByte {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSUseShouldProcessForStateChangingFunctions',
+        '',
+        Justification = 'ShouldProcess is handled by the calling public function.'
+    )]
     [CmdletBinding()]
     [OutputType([byte[]])]
     param(

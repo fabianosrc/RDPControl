@@ -19,6 +19,11 @@ PS C:\> Start-TermService -TimeoutSeconds 60
 None
 #>
 function Start-TermService {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSUseShouldProcessForStateChangingFunctions',
+        '',
+        Justification = 'ShouldProcess is handled by the calling public function.'
+    )]
     [CmdletBinding()]
     [OutputType([void])]
     param (
