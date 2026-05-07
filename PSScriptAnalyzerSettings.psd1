@@ -1,4 +1,4 @@
-﻿﻿@{
+﻿@{
     Severity = @('Error', 'Warning')
 
     IncludeRules = @(
@@ -37,7 +37,7 @@
         # Code quality
         'PSReviewUnusedParameter',
         'PSMisleadingBacktick',
-        'PSAvoidUsingEmptyCatchBlock'
+        'PSAvoidUsingEmptyCatchBlock',
 
         # Formatting / style
         'PSUseConsistentIndentation',
