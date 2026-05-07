@@ -158,8 +158,8 @@ function Find-BinarySignature {
                     BranchType       = $branchType
                     ReplacementBytes = $replacementBytes
                     ReplacementHex   = [string]::Join(' ', ($replacementBytes | ForEach-Object { $_.ToString('X2') }))
-                    ContextBefore    = Get-ByteWindow -Bytes $Bytes -Start ($i - $beforeWindowSize) -Length $beforeWindowSize
-                    ContextAfter     = Get-ByteWindow -Bytes $Bytes -Start ($i + $coreSize) -Length $afterWindowSize
+                    ContextBefore    = Get-ByteRange -Bytes $Bytes -Start ($i - $beforeWindowSize) -Length $beforeWindowSize
+                    ContextAfter     = Get-ByteRange -Bytes $Bytes -Start ($i + $coreSize) -Length $afterWindowSize
                     DiscardedMatches = $discardedMatches
                 }
             }
