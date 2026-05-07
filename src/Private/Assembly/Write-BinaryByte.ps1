@@ -47,7 +47,7 @@ Returns an object with the following properties:
 This function performs in-place binary writes only.
 It does not resize, truncate, or rebuild the target file.
 #>
-function Write-BinaryBytes {
+function Write-BinaryByte {
     [CmdletBinding()]
     [OutputType([pscustomobject])]
     param(
