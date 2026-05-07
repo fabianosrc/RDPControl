@@ -1,8 +1,4 @@
-﻿
-Copy
-
-
-<#
+﻿<#
 .SYNOPSIS
 Reads a binary file into memory and returns its bytes with architecture metadata.
 
@@ -69,7 +65,7 @@ function Read-PEFile {
                 [System.Management.Automation.ErrorCategory]::ReadError,
                 $Path
             )
-            
+
             $PSCmdlet.ThrowTerminatingError($err)
         }
     }
