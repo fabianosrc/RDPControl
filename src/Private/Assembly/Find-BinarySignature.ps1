@@ -120,7 +120,7 @@ function Find-BinarySignature {
                 Write-Verbose -Message "Preceding context validated successfully."
 
                 # Step 3 - validate following branch instruction
-                [string]$branchType = Get-AsmJumpType -Bytes $Bytes -CoreIndex $i -CoreSize $coreSize
+                [string]$branchType = Get-BranchType -Bytes $Bytes -CoreIndex $i -CoreSize $coreSize
 
                 if ($branchType -eq 'unknown') {
                     Write-Verbose -Message "Context validation failed (following branch)."
