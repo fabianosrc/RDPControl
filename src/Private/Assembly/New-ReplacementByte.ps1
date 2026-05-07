@@ -36,10 +36,7 @@ Supported values:
     - jne
 
 .EXAMPLE
-PS C:\> New-ReplacementBytes `
-    -ModRM 0x81 `
-    -Displacement @(0x38,0x06,0x00,0x00) `
-    -JumpType 'jz'
+PS C:\> New-ReplacementByte -ModRM 0x81 -Displacement @(0x38,0x06,0x00,0x00) -JumpType 'jz'
 
 .INPUTS
 None
@@ -51,7 +48,7 @@ System.Byte[]
 This function only generates replacement byte sequences.
 It does not modify binaries or perform write operations.
 #>
-function New-ReplacementBytes {
+function New-ReplacementByte {
     [CmdletBinding()]
     [OutputType([byte[]])]
     param(
@@ -82,7 +79,7 @@ function New-ReplacementBytes {
                     [System.Management.Automation.ErrorCategory]::InvalidData,
                     $ModRM
                 )
-                
+
                 $PSCmdlet.ThrowTerminatingError($err)
             }
 
