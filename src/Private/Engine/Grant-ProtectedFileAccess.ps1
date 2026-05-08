@@ -3,12 +3,12 @@
 Grants access permissions to a protected file.
 
 .DESCRIPTION
-Temporarily enables the required security privilege, updates file ownership
-to the current user, grants file access permissions, and optionally restores
-the original owner.
+Temporarily enables the required security privilege using a scoped privilege
+object (RDPControl.PrivilegeScope) that deterministically restores the previous
+privilege state on disposal, preventing privilege leakage into the host process.
 
-Owner restoration is guaranteed via a finally block, ensuring the original
-owner is restored even if an exception occurs after ownership transfer.
+Updates file ownership to the current user, grants file access permissions,
+and optionally restores the original owner via a finally block.
 
 This function is intended for internal engine use only.
 
@@ -63,55 +63,62 @@ function Grant-ProtectedFileAccess {
 
             $resolvedPath = (Resolve-Path -LiteralPath $Path).ProviderPath
 
-            Write-Verbose -Message "Enabling required security privilege."
-
-            [RDPControl.NativeMethods]::EnablePrivilege("SeTakeOwnershipPrivilege")
-
-            Write-Verbose -Message "Retrieving current access control information."
-
-            $acl = Get-Acl -LiteralPath $resolvedPath
-
-            # Store original owner as IdentityReference to avoid format issues on restore
-            [System.Security.Principal.IdentityReference]$originalOwner = $acl.GetOwner(
-                [System.Security.Principal.SecurityIdentifier]
-            )
-
-            $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
-
-            if ($null -eq $currentUser) {
-                throw [System.Security.SecurityException]::new(
-                    "Unable to resolve current user identity."
-                )
-            }
+            $privilegeScope = $null
 
             try {
-                Write-Verbose -Message "Updating file ownership."
+                # Scoped privilege - automatically restores previous state on Dispose
+                $privilegeScope = [RDPControl.PrivilegeScope]::new("SeTakeOwnershipPrivilege")
 
-                $acl.SetOwner($currentUser)
-                Set-Acl -LiteralPath $resolvedPath -AclObject $acl
+                Write-Verbose -Message "Retrieving current access control information."
 
-                # Re-read ACL after ownership change
                 $acl = Get-Acl -LiteralPath $resolvedPath
 
-                $accessRule = [System.Security.AccessControl.FileSystemAccessRule]::new(
-                    $currentUser,
-                    [System.Security.AccessControl.FileSystemRights]::FullControl,
-                    [System.Security.AccessControl.AccessControlType]::Allow
+                # Store as IdentityReference to avoid format issues on restore
+                [System.Security.Principal.IdentityReference]$originalOwner = $acl.GetOwner(
+                    [System.Security.Principal.SecurityIdentifier]
                 )
 
-                Write-Verbose -Message "Applying file access rule."
+                $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
 
-                $acl.SetAccessRule($accessRule)
-                Set-Acl -LiteralPath $resolvedPath -AclObject $acl
+                if ($null -eq $currentUser) {
+                    throw [System.Security.SecurityException]::new(
+                        "Unable to resolve current user identity."
+                    )
+                }
 
-                Write-Verbose -Message "Protected file access successfully updated."
-            } finally {
-                if ($RestoreOwner -and $null -ne $originalOwner) {
-                    Write-Verbose -Message "Restoring original file ownership."
+                try {
+                    Write-Verbose -Message "Updating file ownership."
 
-                    $acl = Get-Acl -LiteralPath $resolvedPath
-                    $acl.SetOwner($originalOwner)
+                    $acl.SetOwner($currentUser)
                     Set-Acl -LiteralPath $resolvedPath -AclObject $acl
+
+                    # Re-read ACL after ownership change
+                    $acl = Get-Acl -LiteralPath $resolvedPath
+
+                    $accessRule = [System.Security.AccessControl.FileSystemAccessRule]::new(
+                        $currentUser,
+                        [System.Security.AccessControl.FileSystemRights]::FullControl,
+                        [System.Security.AccessControl.AccessControlType]::Allow
+                    )
+
+                    Write-Verbose -Message "Applying file access rule."
+
+                    $acl.SetAccessRule($accessRule)
+                    Set-Acl -LiteralPath $resolvedPath -AclObject $acl
+
+                    Write-Verbose -Message "Protected file access successfully updated."
+                } finally {
+                    if ($RestoreOwner -and $null -ne $originalOwner) {
+                        Write-Verbose -Message "Restoring original file ownership."
+
+                        $acl = Get-Acl -LiteralPath $resolvedPath
+                        $acl.SetOwner($originalOwner)
+                        Set-Acl -LiteralPath $resolvedPath -AclObject $acl
+                    }
+                }
+            } finally {
+                if ($null -ne $privilegeScope) {
+                    $privilegeScope.Dispose()
                 }
             }
         } catch {
@@ -121,7 +128,7 @@ function Grant-ProtectedFileAccess {
                 [System.Management.Automation.ErrorCategory]::PermissionDenied,
                 $Path
             )
-            
+
             $PSCmdlet.ThrowTerminatingError($err)
         }
     }
