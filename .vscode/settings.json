@@ -1,0 +1,36 @@
+{
+    "editor.insertSpaces": true,
+    "editor.tabSize": 4,
+    "editor.detectIndentation": false,
+
+    "editor.formatOnSave": false,
+    "editor.formatOnSaveMode": "modifications",
+    "editor.formatOnPaste": false,
+    "editor.formatOnType": false,
+
+    "files.trimTrailingWhitespace": true,
+    "files.insertFinalNewline": true,
+
+    "powershell.codeFormatting.preset": "OTBS",
+    "powershell.codeFormatting.avoidSemicolonsAsLineTerminators": true,
+
+    "powershell.integratedConsole.showOnStartup": false,
+    "powershell.promptToUpdatePowerShell": false,
+    "powershell.enableProfileLoading": false,
+
+    "powershell.scriptAnalysis.enable": true,
+    "powershell.scriptAnalysis.settingsPath": "${workspaceFolder}/PSScriptAnalyzerSettings.psd1",
+
+    "powershell.helpCompletion": "BlockComment",
+
+    "[powershell]": {
+        "editor.defaultFormatter": "ms-vscode.powershell",
+        "editor.formatOnSave": false,
+        "editor.tabSize": 4,
+        "editor.insertSpaces": true
+    },
+
+    "[markdown]": {
+        "editor.formatOnSave": false
+    }
+}
