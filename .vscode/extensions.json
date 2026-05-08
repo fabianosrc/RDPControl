@@ -1,0 +1,13 @@
+{
+    "recommendations": [
+        "ms-vscode.powershell",
+        "editorconfig.editorconfig",
+        "usernamehw.errorlens",
+        "christian-kohler.path-intellisense",
+        "streetsidesoftware.code-spell-checker",
+        "vscode-icons-team.vscode-icons",
+        "eamodio.gitlens",
+        "mhutchie.git-graph",
+        "yzhang.markdown-all-in-one"
+    ]
+}
