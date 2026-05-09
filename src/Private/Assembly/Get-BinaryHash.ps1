@@ -18,7 +18,7 @@ without separators, suitable for:
 Byte array to hash.
 
 .EXAMPLE
-PS C:\> $pe = Get-PEContent -Path "$env:SystemRoot\System32\kernel32.dll"
+PS C:\> $pe = Read-PEFile -Path "$env:SystemRoot\System32\kernel32.dll"
 PS C:\> Get-BinaryHash -Bytes $pe.Bytes
 
 .EXAMPLE
