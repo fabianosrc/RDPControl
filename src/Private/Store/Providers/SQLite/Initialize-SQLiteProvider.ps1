@@ -10,19 +10,16 @@ Safe to call multiple times - uses CREATE TABLE IF NOT EXISTS.
 None
 #>
 function Initialize-SQLiteProvider {
-    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
+    [CmdletBinding()]
     [OutputType([void])]
     param ()
 
     process {
-        if (-not $PSCmdlet.ShouldProcess('SQLite store', 'Initialize schema')) {
-            return
-        }
-
         $connection = $null
 
         try {
             $connection = [System.Data.SQLite.SQLiteConnection]::new((Get-StoreConnectionString))
+
             $connection.Open()
 
             $command = $connection.CreateCommand()
@@ -34,8 +31,8 @@ function Initialize-SQLiteProvider {
                     os_build       TEXT    NOT NULL,
                     sha256         TEXT    NOT NULL UNIQUE,
                     enforced       INTEGER NOT NULL DEFAULT 0,
-                    binary_blob    BLOB    NOT NULL
-                    created_at     TEXT    NOT NULL,
+                    binary_blob    BLOB    NOT NULL,
+                    created_at     TEXT    NOT NULL
                 );
 
                 CREATE TABLE IF NOT EXISTS audit_log (
@@ -46,16 +43,21 @@ function Initialize-SQLiteProvider {
                     performed_by TEXT    NOT NULL
                 );
 "@
-            $null = $command.ExecuteNonQuery()
-            Write-Verbose -Message 'SQLite schema initialized successfully.'
-        } catch {
-            $err = [System.Management.Automation.ErrorRecord]::new(
-                $_.Exception, 'SQLiteInitializationFailed',
-                [System.Management.Automation.ErrorCategory]::ResourceUnavailable, 'SQLite store')
 
-            $PSCmdlet.ThrowTerminatingError($err)
+            [void]$command.ExecuteNonQuery()
+
+            Write-Verbose 'SQLite schema initialized successfully.'
+        } catch {
+            $PSCmdlet.ThrowTerminatingError(
+                [System.Management.Automation.ErrorRecord]::new(
+                    $_.Exception,
+                    'SQLiteInitializationFailed',
+                    [System.Management.Automation.ErrorCategory]::ResourceUnavailable,
+                    'SQLite store'
+                )
+            )
         } finally {
-            if ($null -ne $connection) {
+            if ($null -eq $connection) {
                 $connection.Close()
                 $connection.Dispose()
             }
