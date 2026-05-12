@@ -25,14 +25,13 @@ function Get-StoreDatabasePath {
         $envFile = Join-Path $env:ProgramData 'RDPControl\environment.json'
 
         try {
-            $config = Get-Content -LiteralPath $envFile -Raw -ErrorAction Stop |
-                ConvertFrom-Json
+            $config = Get-Content -LiteralPath $envFile -Raw -ErrorAction Stop | ConvertFrom-Json
 
-            if (-not $config.databasePath) {
-                throw "Missing 'databasePath' in environment configuration."
+            if (-not $config.paths.DatabasePath) {
+                throw "Missing 'DatabasePath' in environment configuration."
             }
 
-            $config.databasePath
+            $config.paths.DatabasePath
         } catch {
             $PSCmdlet.ThrowTerminatingError(
                 [System.Management.Automation.ErrorRecord]::new(
