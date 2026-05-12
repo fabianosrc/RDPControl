@@ -13,7 +13,7 @@ architecture, allowing callers to validate compatibility before processing.
 Full path to the binary file.
 
 .EXAMPLE
-$assembly = Read-AssemblyBytes -Path "$env:SystemRoot\System32\notepad.exe"
+$assembly = Read-PEFile -Path "$env:SystemRoot\System32\notepad.exe"
 Write-Output "Architecture: $($assembly.Architecture)"
 Write-Output "Size: $($assembly.Bytes.Length) bytes"
 
