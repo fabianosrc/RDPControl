@@ -21,7 +21,7 @@ Windows OS build string.
 .PARAMETER Sha256
 SHA256 hash of the binary.
 
-.PARAMETER Blob
+.PARAMETER BinaryBlob
 Raw binary content.
 
 .PARAMETER Enforced
@@ -32,7 +32,7 @@ New-StoreSnapshot -BinaryPath "C:\example.dll" `
                   -BinaryVersion "10.0.19041.1" `
                   -OsBuild "19041" `
                   -Sha256 "ABC123..." `
-                  -Blob $bytes `
+                  -BinaryBlob $bytes `
                   -Enforced $false
 
 .OUTPUTS
@@ -61,7 +61,7 @@ function New-StoreSnapshot {
 
         [Parameter(Mandatory)]
         [ValidateNotNull()]
-        [byte[]]$Blob,
+        [byte[]]$BinaryBlob,
 
         [Parameter(Mandatory)]
         [bool]$Enforced
@@ -81,7 +81,7 @@ function New-StoreSnapshot {
             BinaryVersion = $BinaryVersion
             OsBuild       = $OsBuild
             Sha256        = $Sha256
-            Blob          = $Blob
+            BinaryBlob    = $BinaryBlob
             Enforced      = $Enforced
         }
 
