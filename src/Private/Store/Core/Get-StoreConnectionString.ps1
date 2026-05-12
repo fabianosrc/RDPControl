@@ -22,12 +22,21 @@ function Get-StoreConnectionString {
     param ()
 
     process {
-        $dbPath = Get-StoreDatabasePath
+        $databaseFile = $Script:Environment.paths.DatabaseFile
 
-        if ([string]::IsNullOrWhiteSpace($dbPath)) {
-            throw "Database path is null or empty."
+        if ([string]::IsNullOrWhiteSpace($databaseFile)) {
+            throw 'Database file path is null or empty.'
         }
 
-        "Data Source=$dbPath;Version=3;"
+        $databaseDirectory = Split-Path -Path $databaseFile -Parent
+
+        if (-not (Test-Path -LiteralPath $databaseDirectory -PathType Container)) {
+            throw (
+                "Database directory does not exist: " +
+                "$databaseDirectory"
+            )
+        }
+
+        "Data Source=$databaseFile;Version=3;"
     }
 }
