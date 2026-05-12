@@ -7,7 +7,7 @@ Reads the target binary, computes its SHA256 hash, and stores a snapshot
 record in the database. Prevents duplicate snapshots using hash comparison.
 
 .EXAMPLE
-New-RdpSnapshot
+PS C:\> New-RdpSnapshot
 
 .INPUTS
 None
