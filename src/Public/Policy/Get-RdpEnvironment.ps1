@@ -91,7 +91,7 @@ function Get-RdpEnvironment {
                     $err = [System.Management.Automation.ErrorRecord]::new(
                         [System.IO.DirectoryNotFoundException]::new(
                             "Required directory missing: [$path]. " +
-                            'Run Initialize-RdpControl -Force to repair.'
+                            'Run Initialize-RdpEnvironment -Force to repair.'
                         ),
                         'EnvironmentCorrupted',
                         [System.Management.Automation.ErrorCategory]::ObjectNotFound,
@@ -106,7 +106,7 @@ function Get-RdpEnvironment {
                 $err = [System.Management.Automation.ErrorRecord]::new(
                     [System.IO.FileNotFoundException]::new(
                         'Database file missing. ' +
-                        'Run Initialize-RdpControl -Force to repair.',
+                        'Run Initialize-RdpEnvironment -Force to repair.',
                         $result.DatabaseFile
                     ),
                     'EnvironmentDatabaseMissing',
