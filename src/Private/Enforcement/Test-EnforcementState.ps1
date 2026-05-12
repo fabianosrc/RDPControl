@@ -14,11 +14,6 @@ If no enforced snapshot exists, the function returns $false.
 .EXAMPLE
 PS C:\> Test-EnforcementState
 
-.EXAMPLE
-PS C:\> if (-not (Test-EnforcementState)) {
->>     Write-Warning 'Binary state differs from enforced snapshot.'
->> }
-
 .INPUTS
 None
 
@@ -49,7 +44,7 @@ function Test-EnforcementState {
                 $PSCmdlet.ThrowTerminatingError($err)
             }
 
-            $enforcedSnapshot = Get-StoreRecord -Snapshot -Enforced $true -Latest
+            $enforcedSnapshot = (Get-StoreSnapshot -Enforced $true -Latest) | Select-Object -First 1
 
             if ($null -eq $enforcedSnapshot) {
                 Write-Verbose -Message 'No enforced snapshot found.'

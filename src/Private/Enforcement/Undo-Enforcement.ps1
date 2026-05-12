@@ -99,7 +99,7 @@ function Undo-Enforcement {
             Write-Verbose -Message 'Enforcement lock acquired.'
 
             # Step 1 - locate latest pre-enforcement snapshot
-            $snapshot = Get-StoreRecord -Snapshot -Enforced $false -Latest
+            $snapshot = (Get-StoreSnapshot -Enforced $false -Latest) | Select-Object -First 1
 
             if ($null -eq $snapshot) {
                 $err = [System.Management.Automation.ErrorRecord]::new(
@@ -117,11 +117,11 @@ function Undo-Enforcement {
 
             Write-Verbose -Message (
                 "Restore snapshot selected: ID=$($snapshot.id), " +
-                "Version=$($snapshot.dll_version)"
+                "Version=$($snapshot.binary_version)"
             )
 
             # Step 2 - retrieve stored binary blob
-            $blobRecord = Get-StoreRecord -Snapshot -Id $snapshot.id
+            $blobRecord = (Get-StoreSnapshot -Id $snapshot.id) | Select-Object -First 1
 
             if ($null -eq $blobRecord -or $null -eq $blobRecord.blob) {
                 $err = [System.Management.Automation.ErrorRecord]::new(
@@ -151,9 +151,7 @@ function Undo-Enforcement {
 
             try {
                 Grant-ProtectedFileAccess -Path $targetPath
-
                 [System.IO.File]::WriteAllBytes($targetPath, $blob)
-
                 Write-Verbose -Message 'Original binary restored.'
             } finally {
                 try {
@@ -199,16 +197,13 @@ function Undo-Enforcement {
             Write-Verbose -Message 'Post-restore validation passed.'
 
             # Step 5 - persist audit metadata
-            $detailsParts = @(
-                "SnapshotId=$($snapshot.id)"
-                "Hash=$restoredHash"
-            )
+            $detailsParts = "SnapshotId={0};Hash={1}" -f $snapshot.Id, $restoredHash
 
-            New-StoreRecord -Audit -Operation 'Undo-Enforcement' -Details ($detailsParts -join ';') | Out-Null
+            New-StoreAuditRecord -Operation 'Undo-Enforcement' -Details $detailsParts | Out-Null
 
             Write-Verbose -Message 'Enforcement reverted successfully.'
 
-            return [pscustomobject]@{
+            return [PSCustomObject]@{
                 Success    = $true
                 SnapshotId = $snapshot.id
                 Hash       = $restoredHash
@@ -219,7 +214,6 @@ function Undo-Enforcement {
                 try {
                     if ($mutexOwned) {
                         $mutex.ReleaseMutex()
-
                         Write-Verbose -Message 'Enforcement lock released.'
                     }
                 } finally {

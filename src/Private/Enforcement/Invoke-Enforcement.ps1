@@ -35,9 +35,9 @@ function Invoke-Enforcement {
     process {
         $targetBinary = 'termsrv.dll'
         $targetPath   = Join-Path -Path $env:SystemRoot -ChildPath "System32\$targetBinary"
-        $mutexName  = 'Global\RDPControl'
-        $mutex      = $null
-        $mutexOwned = $false
+        $mutexName    = 'Global\RDPControl'
+        $mutex        = $null
+        $mutexOwned   = $false
 
         try {
             # Guard: elevation
@@ -117,15 +117,15 @@ function Invoke-Enforcement {
 
             try {
                 $snapshotParams = @{
-                    DllPath    = $targetPath
-                    DllVersion = $binVersion
-                    OsBuild    = $osVersion
-                    Sha256     = $preHash
-                    Blob       = $assembly.Bytes
-                    Enforced   = $false
+                    BinaryPath    = $targetPath
+                    BinaryVersion = $binVersion
+                    OsBuild       = $osVersion
+                    Sha256        = $preHash
+                    BinaryBlob    = $assembly.Bytes
+                    Enforced      = $false
                 }
 
-                $snapshotId = New-StoreRecord -Snapshot @snapshotParams
+                $snapshotId = New-StoreSnapshot @snapshotParams
 
                 Write-Verbose -Message "Pre-enforcement snapshot saved. ID: $snapshotId"
             } catch {
@@ -224,15 +224,15 @@ function Invoke-Enforcement {
 
             # Step 6 - persist enforced snapshot and audit record
             $snapshotParams = @{
-                DllPath    = $targetPath
-                DllVersion = $binVersion
-                OsBuild    = $osVersion
-                Sha256     = $enforcedHash
-                Blob       = $enforcedAssembly.Bytes
-                Enforced   = $true
+                BinaryPath    = $targetPath
+                BinaryVersion = $binVersion
+                OsBuild       = $osVersion
+                Sha256        = $enforcedHash
+                BinaryBlob    = $enforcedAssembly.Bytes
+                Enforced      = $true
             }
 
-            New-StoreRecord -Snapshot @snapshotParams | Out-Null
+            New-StoreSnapshot @snapshotParams | Out-Null
 
             $detailsParts = @(
                 "WriteOffset=$($signature.WriteOffset)"
@@ -245,7 +245,7 @@ function Invoke-Enforcement {
                 Details   = $detailsParts -join ';'
             }
 
-            New-StoreRecord -Audit @auditParams | Out-Null
+            New-StoreAuditRecord @auditParams | Out-Null
 
             Write-Verbose -Message 'Enforcement completed successfully.'
 
