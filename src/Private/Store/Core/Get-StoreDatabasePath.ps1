@@ -22,12 +22,12 @@ function Get-StoreDatabasePath {
     param ()
 
     process {
-        $envFile = Join-Path $env:ProgramData 'RDPControl\environment.json'
+        $envFile = Join-Path -Path $env:ProgramData -ChildPath 'RDPControl\environment.json'
 
         try {
             $config = Get-Content -LiteralPath $envFile -Raw -ErrorAction Stop | ConvertFrom-Json
 
-            if (-not $config.paths.DatabasePath) {
+            if ([string]::IsNullOrWhiteSpace($config.paths.DatabasePath)) {
                 throw "Missing 'DatabasePath' in environment configuration."
             }
 
