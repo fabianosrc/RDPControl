@@ -6,8 +6,11 @@ Lists members of the Remote Desktop Users local group.
 Returns all members of the 'Remote Desktop Users' local group,
 including local and domain accounts.
 
+Uses Get-LocalGroupMember for fast, modern enumeration without
+legacy COM/ADSI overhead.
+
 .EXAMPLE
-PS C:> Get-RdpUser
+PS C:\> Get-RdpUser
 
 .INPUTS
 None
@@ -15,15 +18,11 @@ None
 .OUTPUTS
 PSCustomObject[]
 Contains:
-- Name
-- Domain
-- ObjectClass
-- SID
-
-.NOTES
-Uses WinNT ADSI provider (legacy compatibility layer).
+- Name        [string] - account name without domain prefix
+- Domain      [string] - account domain or local computer name
+- ObjectClass [string] - 'User' or 'Group'
+- SID         [string] - security identifier value
 #>
-
 function Get-RdpUser {
     [CmdletBinding()]
     [OutputType([pscustomobject[]])]
@@ -35,35 +34,31 @@ function Get-RdpUser {
 
     process {
         try {
-            $group = [adsi]"WinNT://$env:COMPUTERNAME/Remote Desktop Users,group"
+            $members = Get-LocalGroupMember -Group 'Remote Desktop Users' -ErrorAction Stop
 
-            foreach ($member in $group.Members()) {
-                $name  = $member.Name
-                $class = $member.Class
-                $path  = $member.ADsPath
+            foreach ($member in $members) {
+                # Split 'DOMAIN\Name' into parts - limit to 2 to handle edge cases
+                $nameParts = $member.Name -split '\\', 2
 
-                # safer domain extraction (no regex hack)
-                $domain = if ($path -match '^WinNT://([^/]+)/') {
-                    $matches[1]
+                # If domain prefix exists use it, otherwise fall back to local computer name
+                $domain = if ($nameParts.Count -eq 2) {
+                    $nameParts[0]
                 } else {
                     $env:COMPUTERNAME
                 }
 
-                $sid = $null
-
-                try {
-                    $ntAccount = [System.Security.Principal.NTAccount]::new($domain, $name)
-                    $sid = $ntAccount.Translate([System.Security.Principal.SecurityIdentifier]).Value
-                } catch {
-                    # SID resolution failure is not fatal
-                    $sid = $null
+                # Return name without domain prefix for cleaner display
+                $name = if ($nameParts.Count -eq 2) {
+                    $nameParts[1]
+                } else {
+                    $member.Name
                 }
 
                 [PSCustomObject]@{
                     Name        = $name
                     Domain      = $domain
-                    ObjectClass = $class
-                    SID         = $sid
+                    ObjectClass = $member.ObjectClass.ToString()
+                    SID         = $member.SID.Value
                 }
             }
         } catch {
