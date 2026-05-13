@@ -22,19 +22,11 @@ function Get-StoreConnectionString {
     param ()
 
     process {
-        $databaseFile = $Script:Environment.paths.DatabaseFile
+        $databasePath = Get-StoreDatabasePath
+        $databaseFile = Join-Path -Path $databasePath -ChildPath 'rdpcontrol.db'
 
         if ([string]::IsNullOrWhiteSpace($databaseFile)) {
             throw 'Database file path is null or empty.'
-        }
-
-        $databaseDirectory = Split-Path -Path $databaseFile -Parent
-
-        if (-not (Test-Path -LiteralPath $databaseDirectory -PathType Container)) {
-            throw (
-                "Database directory does not exist: " +
-                "$databaseDirectory"
-            )
         }
 
         "Data Source=$databaseFile;Version=3;"
