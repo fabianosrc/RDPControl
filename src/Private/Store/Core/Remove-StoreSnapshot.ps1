@@ -19,7 +19,12 @@ Remove-StoreSnapshot -Id 3
 None
 #>
 function Remove-StoreSnapshot {
-    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSUseShouldProcessForStateChangingFunctions',
+        '',
+        Justification = 'Confirmation and ShouldProcess semantics are enforced by the public cmdlet boundary.'
+    )]
+    [CmdletBinding()]
     [OutputType([void])]
     param (
         [Parameter(Mandatory)]
@@ -40,13 +45,13 @@ function Remove-StoreSnapshot {
         $snapshot = Get-StoreSnapshot -Id $Id
 
         if (-not $snapshot) {
-            Write-Warning "Snapshot [$Id] not found."
+            Write-Warning -Message "Snapshot [$Id] not found."
             return
         }
 
         # Domain rule stays in Core, but uses abstract store API
-        $allSnapshots = Get-StoreSnapshot
-        $enforced     = Get-StoreSnapshot -Enforced
+        $allSnapshots = @(Get-StoreSnapshot)
+        $enforced     = @(Get-StoreSnapshot -Enforced $true)
 
         if ($allSnapshots.Count -eq 1 -and $enforced.Count -gt 0) {
             $err = [System.Management.Automation.ErrorRecord]::new(
@@ -61,13 +66,13 @@ function Remove-StoreSnapshot {
             $PSCmdlet.ThrowTerminatingError($err)
         }
 
-        if (-not ($Force -or $PSCmdlet.ShouldProcess("Snapshot [$Id]", "Remove"))) {
+        if (-not ($Force)) {
             return
         }
 
         # Core → Provider (no SQLite awareness)
-        Remove-StoreSnapshotInternal -Id $Id
+        Remove-SQLiteSnapshot -Id $Id
 
-        Write-Verbose "Snapshot [$Id] removed."
+        Write-Verbose -Message "Snapshot [$Id] removed."
     }
 }
