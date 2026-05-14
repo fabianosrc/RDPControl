@@ -1,0 +1,107 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run Current Script",
+            "type": "PowerShell",
+            "request": "launch",
+            "script": "${file}",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Debug Current Script",
+            "type": "PowerShell",
+            "request": "launch",
+            "script": "${file}",
+            "cwd": "${workspaceFolder}",
+            "createTemporaryIntegratedConsole": true
+        },
+        {
+            "name": "Import Module (Dev Session)",
+            "type": "PowerShell",
+            "request": "launch",
+            "script": "${workspaceFolder}/tools/private/DevImport.ps1",
+            "cwd": "${workspaceFolder}",
+            "createTemporaryIntegratedConsole": true
+        },
+        {
+            "name": "Run Pipeline (Full)",
+            "type": "PowerShell",
+            "request": "launch",
+            "script": "${workspaceFolder}/tools/Invoke-Pipeline.ps1",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Run Pipeline (Skip Tests)",
+            "type": "PowerShell",
+            "request": "launch",
+            "script": "${workspaceFolder}/tools/Invoke-Pipeline.ps1",
+            "args": [
+                "-SkipTests"
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Run Pipeline (Import After Build)",
+            "type": "PowerShell",
+            "request": "launch",
+            "script": "${workspaceFolder}/tools/Invoke-Pipeline.ps1",
+            "args": [
+                "-ImportAfterBuild"
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Run Pester (All Tests)",
+            "type": "PowerShell",
+            "request": "launch",
+            "script": "${workspaceFolder}/tools/private/Tests.ps1",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Run Pester (Current File)",
+            "type": "PowerShell",
+            "request": "launch",
+            "script": "${file}",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Run Pester (Coverage)",
+            "type": "PowerShell",
+            "request": "launch",
+            "script": "${workspaceFolder}/tools/private/Tests.ps1",
+            "args": [
+                "-Coverage"
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Run PSScriptAnalyzer",
+            "type": "PowerShell",
+            "request": "launch",
+            "script": "${workspaceFolder}/tools/private/Lint.ps1",
+            "args": [
+                "-Strict"
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Run Build",
+            "type": "PowerShell",
+            "request": "launch",
+            "script": "${workspaceFolder}/tools/private/Build.ps1",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Run Build (Skip Tests)",
+            "type": "PowerShell",
+            "request": "launch",
+            "script": "${workspaceFolder}/tools/private/Build.ps1",
+            "args": [
+                "-SkipTests"
+            ],
+            "cwd": "${workspaceFolder}"
+        }
+
+    ]
+}
