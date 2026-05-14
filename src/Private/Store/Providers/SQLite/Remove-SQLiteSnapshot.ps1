@@ -12,7 +12,12 @@ Identifier of the snapshot record to remove.
 None
 #>
 function Remove-SQLiteSnapshot {
-    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSUseShouldProcessForStateChangingFunctions',
+        '',
+        Justification = 'Confirmation and ShouldProcess semantics are enforced by the public cmdlet boundary.'
+    )]
+    [CmdletBinding()]
     [OutputType([void])]
     param (
         [Parameter(Mandatory)]
@@ -24,11 +29,6 @@ function Remove-SQLiteSnapshot {
     )
 
     process {
-
-        if (-not $PSCmdlet.ShouldProcess("Snapshot [$Id]", "Delete snapshot record")) {
-            return
-        }
-
         $connection = $null
         $command    = $null
 
