@@ -11,7 +11,7 @@ and a self-healing watchdog.
 
 ## ⚠️ Disclaimer
 
-> **RDPControl does not distribute any modified, modified, or pre-configured binary
+> **RDPControl does not distribute any modified or pre-configured binary
 > files.** The module works exclusively with binaries already present on the
 > operating system of the machine where it runs. All modifications are computed
 > locally at runtime from the original system file on that specific machine.
@@ -71,10 +71,13 @@ Set-RdpPort -Port 3390
 # 4. Take a snapshot of the current system binary
 New-RdpSnapshot
 
-# 5. Enable multi-session mode
-Set-RdpSessionMode -Mode MultiSession
+# 5. Preview what enabling multi-session would do (no changes applied)
+Set-RdpSessionMode -Enabled -DryRun
 
-# 6. Enable the self-healing watchdog
+# 6. Enable multi-session mode
+Set-RdpSessionMode -Enabled
+
+# 7. Enable the self-healing watchdog
 Start-RdpWatchdog
 ```
 
@@ -107,8 +110,8 @@ Initialize-RdpEnvironment -Purge
 | `Set-RdpPort` | Changes the RDP port, updates the firewall rule, and restarts TermService. |
 | `Get-RdpService` | Returns the current state of the Remote Desktop service. |
 | `Set-RdpService` | Enables or disables the Remote Desktop service. |
-| `Get-RdpSessionMode` | Returns the current single/multi-session mode. |
-| `Set-RdpSessionMode` | Configures single-session or multi-session (RDM) mode. |
+| `Get-RdpSessionMode` | Returns the current session mode and enforcement state. |
+| `Set-RdpSessionMode` | Configures Standard or Concurrent session mode. |
 
 ```powershell
 # Change RDP port without modifying the firewall rule
@@ -117,12 +120,57 @@ Set-RdpPort -Port 3390 -SkipFirewall
 # Preview the change before applying
 Set-RdpPort -Port 3390 -WhatIf
 
-# Enable multi-session mode
-Set-RdpSessionMode -Mode MultiSession
+# Enable concurrent session mode
+Set-RdpSessionMode -Enabled
 
 # Enable Remote Desktop
-Set-RdpService -Enabled $true
+Set-RdpService -Enabled
 ```
+
+---
+
+### Session Mode — DryRun
+
+Before applying any session mode change, use `-DryRun` to analyze the system
+binary without modifying anything. The result is a structured
+`RDPControl.DryRunResult` object — fully pipeline-friendly.
+
+```powershell
+# Analyze without applying
+Set-RdpSessionMode -Enabled -DryRun
+
+# Export analysis as JSON (useful for CI/CD)
+Set-RdpSessionMode -Enabled -DryRun | ConvertTo-Json
+
+# Gate a CI pipeline on signature availability
+$analysis = Set-RdpSessionMode -Enabled -DryRun
+if (-not $analysis.IsApplicable) {
+    throw 'Signature not found. Enforcement is not supported on this binary.'
+}
+
+# Check if a new snapshot would be required
+if ($analysis.RequiresSnapshot) {
+    Write-Host 'A new snapshot will be created before applying changes.'
+}
+```
+
+**DryRun output properties:**
+
+| Property | Description |
+|---|---|
+| `CurrentState` | Current session mode (`Standard` or `Concurrent`) |
+| `TargetState` | Session mode that would be applied |
+| `BinaryPath` | Full path to the target binary |
+| `Hash` | SHA-256 hash of the current binary |
+| `SnapshotAction` | Whether a new snapshot would be created or reused |
+| `SignatureFound` | Whether the configuration signature was located |
+| `SignatureOffset` | Hex offset of the located signature |
+| `WriteOffset` | Hex offset where bytes would be written |
+| `BranchType` | Branch instruction type (`jz` or `jne`) |
+| `CurrentBytes` | Hex dump of the bytes currently at the write location |
+| `ReplacementHex` | Hex dump of the bytes that would be written |
+| `IsApplicable` | Computed: `$true` if signature was found and enforcement can proceed |
+| `RequiresSnapshot` | Computed: `$true` if a new snapshot would be created |
 
 ---
 
@@ -136,7 +184,7 @@ Set-RdpService -Enabled $true
 
 ```powershell
 Add-RdpUser -Identity 'DOMAIN\JohnDoe'
-Add-RdpUser -Identity 'Support Team'  # local group
+Add-RdpUser -Identity 'Support Team'
 
 Get-RdpUser
 
@@ -154,16 +202,12 @@ Remove-RdpUser -Identity 'DOMAIN\JohnDoe'
 | `Stop-RdpSession` | Logs off a session by ID. |
 
 ```powershell
-# List all sessions
 Get-RdpSession
 
-# Disconnect session 3 without logging it off
 Disconnect-RdpSession -Id 3
 
-# Log off session 3
 Stop-RdpSession -Id 3
 
-# Preview before acting
 Stop-RdpSession -Id 3 -WhatIf
 ```
 
@@ -183,16 +227,12 @@ to a known-good state.
 | `Restore-RdpSnapshot` | Restores the system binary from a stored snapshot. |
 
 ```powershell
-# Capture the current binary before making any changes
 New-RdpSnapshot
 
-# List all stored snapshots
 Get-RdpSnapshot
 
-# Restore from snapshot ID 1
 Restore-RdpSnapshot -Id 1
 
-# Restore from the most recent snapshot (no confirmation prompt)
 Restore-RdpSnapshot -Latest -Force
 ```
 
@@ -215,14 +255,11 @@ enforcement automatically if changes are detected.
 | `Get-RdpWatchdogStatus` | Returns the registration state and last run time. |
 
 ```powershell
-# Enable enforcement first, then start the watchdog
-Set-RdpSessionMode -Mode MultiSession
+Set-RdpSessionMode -Enabled
 Start-RdpWatchdog
 
-# Check watchdog state
 Get-RdpWatchdogStatus
 
-# Disable the watchdog
 Stop-RdpWatchdog
 ```
 
@@ -237,7 +274,10 @@ Initialize-RdpEnvironment
   New-RdpSnapshot          ← capture original binary before any change
         │
         ▼
-Set-RdpSessionMode -Mode MultiSession   ← apply enforcement
+Set-RdpSessionMode -Enabled -DryRun   ← analyze without applying
+        │
+        ▼
+Set-RdpSessionMode -Enabled           ← apply enforcement
         │
         ▼
   Start-RdpWatchdog        ← protect against Windows Update reverting the change
@@ -250,6 +290,49 @@ Set-RdpSessionMode -Mode MultiSession   ← apply enforcement
         └── To revert:
               Stop-RdpWatchdog
               Restore-RdpSnapshot -Latest
+```
+
+---
+
+## Development
+
+### Pipeline
+
+All development tasks are orchestrated via a single entry point:
+
+```powershell
+# Full pipeline: lint → validate → test → build
+.\tools\Invoke-Pipeline.ps1
+
+# Development workflow: lint + validate + reimport (no tests required)
+.\tools\Invoke-Pipeline.ps1 -SkipTests -ImportAfterBuild
+
+# Run only lint and validation (fastest feedback loop)
+.\tools\Invoke-Pipeline.ps1 -SkipTests -SkipBuild
+
+# Full pipeline + publish to Gallery (requires PSGALLERY_API_KEY)
+.\tools\Invoke-Pipeline.ps1 -Publish
+```
+
+> **Note:** `-Publish` is blocked when `-SkipTests` is active.
+> 80% Pester code coverage is required before publishing to the PowerShell Gallery.
+
+### Individual tools
+
+The `tools\private\` scripts can also be run independently:
+
+```powershell
+# Lint only
+.\tools\private\Lint.ps1 -Strict
+
+# Tests with coverage
+.\tools\private\Tests.ps1 -Coverage
+
+# Reimport module from source
+.\tools\private\DevImport.ps1
+
+# Build artifact only
+.\tools\private\Build.ps1 -SkipLint -SkipTests
 ```
 
 ---
@@ -276,6 +359,9 @@ The database is located at:
   `SeTakeOwnershipPrivilege` or `SeRestorePrivilege` use a C# RAII scope
   (`RDPControl.PrivilegeScope`) to guarantee deterministic rollback, preventing
   privilege leakage into the host process.
+- **Declarative output formatting:** The module ships `RDPControl.format.ps1xml`
+  and `RDPControl.types.ps1xml` for structured, pipeline-friendly output. All
+  public cmdlets return typed objects — no `Write-Host` in the public surface.
 - **No wildcards exported:** All 21 public functions are listed explicitly in
   `FunctionsToExport` for performance and discoverability.
 
