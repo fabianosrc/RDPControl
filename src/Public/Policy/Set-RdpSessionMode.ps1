@@ -5,28 +5,38 @@ Enables or disables multiple simultaneous remote desktop sessions.
 .DESCRIPTION
 Applies or reverts the multi-session connection policy by configuring the
 target system binary. A snapshot is automatically saved before any changes
-are applied. Enforcement is aborted if the snapshot operation fails.
+are applied. Enforcement is aborted if snapshot creation fails.
 
 When enabling:
-    - Saves a pre-enforcement snapshot (mandatory)
+    - Creates or reuses a pre-enforcement snapshot
     - Applies binary configuration
-    - Validates the result via dual verification
-    - Records the operation in the audit log
+    - Validates enforcement state via dual verification
+    - Records the operation in the audit store
 
 When disabling:
-    - Locates the most recent pre-enforcement snapshot
-    - Restores the original binary
-    - Validates the restore via hash comparison
-    - Records the operation in the audit log
+    - Restores the most recent valid snapshot
+    - Validates restoration integrity via hash comparison
+    - Records the operation in the audit store
+
+When using -DryRun:
+    - Reads and analyzes the target binary
+    - Locates the configuration signature
+    - Calculates replacement bytes
+    - Returns a RDPControl.DryRunResult object
+    - Performs no filesystem modifications
 
 .PARAMETER Enabled
-Applies the multi-session configuration.
+Applies the concurrent session configuration.
 
 .PARAMETER Disabled
-Reverts the multi-session configuration to its original state.
+Restores the original single-session configuration.
 
 .PARAMETER Force
-Skips enforcement state detection and confirmation prompt.
+Skips state validation and confirmation prompts.
+
+.PARAMETER DryRun
+Performs analysis only. No files are modified, no snapshots are created.
+Returns a RDPControl.DryRunResult object for inspection or pipeline use.
 
 .EXAMPLE
 PS C:\> Set-RdpSessionMode -Enabled
@@ -40,77 +50,155 @@ PS C:\> Set-RdpSessionMode -Enabled -Force
 .EXAMPLE
 PS C:\> Set-RdpSessionMode -Enabled -WhatIf
 
+.EXAMPLE
+PS C:\> Set-RdpSessionMode -Enabled -DryRun
+
+.EXAMPLE
+PS C:\> Set-RdpSessionMode -Enabled -DryRun | ConvertTo-Json
+
+.EXAMPLE
+PS C:\> if (-not (Set-RdpSessionMode -Enabled -DryRun).Applicable) { throw 'Signature not found.' }
+
 .INPUTS
 None
 
 .OUTPUTS
+RDPControl.DryRunResult
 PSCustomObject
 #>
 function Set-RdpSessionMode {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High', DefaultParameterSetName = 'Enabled')]
-    [OutputType([pscustomobject])]
+    [OutputType('RDPControl.DryRunResult', [pscustomobject])]
     param (
         [Parameter(Mandatory, ParameterSetName = 'Enabled')]
+        [Parameter(Mandatory, ParameterSetName = 'EnabledDryRun')]
         [switch]$Enabled,
 
         [Parameter(Mandatory, ParameterSetName = 'Disabled')]
+        [Parameter(Mandatory, ParameterSetName = 'DisabledDryRun')]
         [switch]$Disabled,
 
         [Parameter()]
-        [switch]$Force
+        [switch]$Force,
+
+        [Parameter(Mandatory, ParameterSetName = 'EnabledDryRun')]
+        [Parameter(Mandatory, ParameterSetName = 'DisabledDryRun')]
+        [switch]$DryRun
     )
 
     begin {
         Assert-RdpEnvironment
 
         if (-not (Test-IsElevated)) {
-            $err = [System.Management.Automation.ErrorRecord]::new(
-                [System.UnauthorizedAccessException]::new(
-                    'Set-RdpSessionMode requires elevated privileges. ' +
-                    'Run PowerShell as Administrator.'
-                ),
-                'ElevationRequired',
-                [System.Management.Automation.ErrorCategory]::PermissionDenied,
-                $null
+            $PSCmdlet.ThrowTerminatingError(
+                [System.Management.Automation.ErrorRecord]::new(
+                    [System.UnauthorizedAccessException]::new(
+                        'Set-RdpSessionMode requires elevated privileges. ' +
+                        'Run PowerShell as Administrator.'
+                    ),
+                    'ElevationRequired',
+                    [System.Management.Automation.ErrorCategory]::PermissionDenied,
+                    $null
+                )
             )
-
-            $PSCmdlet.ThrowTerminatingError($err)
         }
+
+        $targetPath = Join-Path -Path $env:SystemRoot -ChildPath 'System32\termsrv.dll'
     }
 
     process {
+        if ($DryRun) {
+            Write-Verbose -Message '[DryRun] Reading target binary.'
+            $assembly = Read-PEFile -Path $targetPath
+
+            Write-Verbose -Message '[DryRun] Computing binary hash.'
+            $hash = Get-BinaryHash -Bytes $assembly.Bytes
+
+            Write-Verbose -Message '[DryRun] Locating signature.'
+            $signature = Find-BinarySignature -Bytes $assembly.Bytes
+
+            $currentState = if (Test-EnforcementState) {
+                'Concurrent'
+            } else {
+                'Standard'
+            }
+
+            $targetState = if ($Enabled) {
+                'Concurrent'
+            } else {
+                'Standard'
+            }
+
+            $existingSnapshot = @(Get-StoreSnapshot -Sha256 $hash)
+            $snapshotAction   = if ($existingSnapshot.Count -gt 0) {
+                "Reuse existing snapshot (ID: $($existingSnapshot[0].Id))"
+            } else {
+                'Create new snapshot'
+            }
+
+            $currentBytesHex = $null
+
+            if ($signature.Found) {
+                [byte[]]$corePattern = 0x39, 0x81, 0x3C, 0x06, 0x00, 0x00
+                $currentBytesHex     = [string]::Join(' ', (($corePattern + $signature.ContextAfter) |
+                    ForEach-Object { $_.ToString('X2') }
+                ))
+            }
+
+            $result = [PSCustomObject]@{
+                IsApplicable    = $signature.Found
+                CurrentState    = $currentState
+                TargetState     = $targetState
+                BinaryPath      = $targetPath
+                Hash            = $hash
+                SnapshotAction  = $snapshotAction
+                SignatureFound  = $signature.Found
+                SignatureOffset = $signature.SignatureOffset
+                WriteOffset     = $signature.WriteOffset
+                BranchType      = $signature.BranchType
+                CurrentBytes    = $currentBytesHex
+                ReplacementHex  = $signature.ReplacementHex
+            }
+
+            $result.PSObject.TypeNames.Insert(0, 'RDPControl.DryRunResult')
+
+            return $result
+        }
+
         if ($Enabled) {
             if (-not $Force -and (Test-EnforcementState)) {
-                Write-Warning -Message 'Multi-session is already configured. Use -Force to re-apply.'
+                Write-Warning -Message 'Multi-session is already enabled. Use -Force to re-apply.'
                 return
             }
 
-            if (-not $PSCmdlet.ShouldProcess('Multi-session policy', 'Enable')) {
+            if (-not ($Force -or $PSCmdlet.ShouldProcess('Multi-session policy', 'Enable multi-session'))) {
                 return
             }
 
             $result = Invoke-Enforcement
 
-            [PSCustomObject]@{
+            return [PSCustomObject]@{
                 State       = 'Enabled'
                 SnapshotId  = $result.SnapshotId
                 WriteOffset = $result.WriteOffset
                 Hash        = $result.Hash
                 EnforcedAt  = $result.EnforcedAt
             }
-        } elseif ($Disabled) {
+        }
+
+        if ($Disabled) {
             if (-not $Force -and -not (Test-EnforcementState)) {
-                Write-Warning -Message 'Multi-session is not currently configured. Nothing to revert.'
+                Write-Warning -Message 'Multi-session is not currently enabled. Nothing to revert.'
                 return
             }
 
-            if (-not ($Force -or $PSCmdlet.ShouldProcess('Multi-session policy', 'Enable'))) {
+            if (-not ($Force -or $PSCmdlet.ShouldProcess('Multi-session policy', 'Disable multi-session'))) {
                 return
             }
 
             $result = Undo-Enforcement
 
-            [PSCustomObject]@{
+            return [PSCustomObject]@{
                 State      = 'Disabled'
                 SnapshotId = $result.SnapshotId
                 Hash       = $result.Hash
