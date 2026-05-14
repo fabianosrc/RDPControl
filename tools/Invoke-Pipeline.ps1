@@ -25,6 +25,8 @@ Skips the function name and export validation step.
 
 .PARAMETER SkipTests
 Skips the Pester test run.
+Note: -Publish is blocked when -SkipTests is active. 80% coverage is
+required before publishing to the PowerShell Gallery.
 
 .PARAMETER SkipBuild
 Skips the build step. Steps that depend on build output (Import, Manifest,
@@ -37,10 +39,14 @@ Skips code coverage collection during tests.
 Reimports the module from source after a successful build.
 Ignored when -SkipBuild is active.
 
+.PARAMETER DevImport
+Reimports the module directly from source without building.
+Useful for rapid development iteration. Can be combined with -SkipBuild and -SkipTests.
+
 .PARAMETER Publish
 Publishes the built module to the PowerShell Gallery.
 Requires the PSGALLERY_API_KEY environment variable.
-Ignored when -SkipBuild is active.
+Blocked when -SkipTests is active.
 
 .EXAMPLE
 PS C:\> .\tools\Invoke-Pipeline.ps1
@@ -56,6 +62,11 @@ Runs lint, validation, and tests only. Useful during active development.
 PS C:\> .\tools\Invoke-Pipeline.ps1 -SkipTests -ImportAfterBuild
 
 Skips tests and reimports the module after build.
+
+.EXAMPLE
+PS C:\> .\tools\Invoke-Pipeline.ps1 -SkipTests -SkipBuild -DevImport
+
+Skips tests and build, reimports the module directly from source.
 
 .EXAMPLE
 PS C:\> .\tools\Invoke-Pipeline.ps1 -Publish
@@ -82,6 +93,9 @@ param (
     [switch]$ImportAfterBuild,
 
     [Parameter()]
+    [switch]$DevImport,
+
+    [Parameter()]
     [switch]$Publish
 )
 
@@ -97,23 +111,21 @@ $srcPath      = Join-Path -Path $root -ChildPath 'src'
 $manifestPath = Join-Path -Path $root -ChildPath 'RDPControl.psd1'
 $outputPath   = Join-Path -Path $root -ChildPath 'output'
 
+# -- Guard: cannot publish without tests --------------------------------------
+
+if ($Publish -and $SkipTests) {
+    Write-Error -Message '[Pipeline] Cannot publish with -SkipTests. 80% coverage is required before publishing to the PowerShell Gallery.'
+    exit 1
+}
+
 # -- Resolve downstream skip flags --------------------------------------------
 
-# Import, Manifest validation, and Publish all require build output.
-# Silently disable them when -SkipBuild is active so callers do not need
-# to pass multiple flags for a pre-build workflow.
+if ($SkipBuild -and $ImportAfterBuild) {
+    Write-Warning -Message '[Pipeline] -ImportAfterBuild ignored because -SkipBuild is active.'
+}
 
-if ($SkipBuild) {
-    if ($ImportAfterBuild) {
-        Write-Warning -Message '[Pipeline] -ImportAfterBuild ignored because -SkipBuild is active.'
-        $ImportAfterBuild = [switch]::Present
-        $ImportAfterBuild = $false
-    }
-
-    if ($Publish) {
-        Write-Warning -Message '[Pipeline] -Publish ignored because -SkipBuild is active.'
-        $Publish = $false
-    }
+if ($SkipBuild -and $Publish) {
+    Write-Warning -Message '[Pipeline] -Publish ignored because -SkipBuild is active.'
 }
 
 # -- Helpers ------------------------------------------------------------------
@@ -167,7 +179,8 @@ $totalSteps = 0 +
     [int](-not $SkipTests.IsPresent) +
     [int](-not $SkipBuild.IsPresent) +
     [int]($ImportAfterBuild -and -not $SkipBuild.IsPresent) +
-    [int](-not $SkipBuild.IsPresent) +   # Manifest validation
+    [int]$DevImport.IsPresent +
+    [int](-not $SkipBuild.IsPresent) +
     [int]($Publish -and -not $SkipBuild.IsPresent)
 
 $step = 0
@@ -183,6 +196,7 @@ if ($SkipLint) {
 } else {
     Write-PipelineStep -Index $step -Total $totalSteps -Label 'Lint (PSScriptAnalyzer)'
 
+    $LASTEXITCODE = 0
     & (Join-Path -Path $privateTools -ChildPath 'Lint.ps1') -Strict
 
     if ($LASTEXITCODE -ne 0) {
@@ -310,15 +324,14 @@ $step++
 
 if ($SkipTests) {
     Write-PipelineStepSkipped -Index $step -Total $totalSteps -Label 'Tests (Pester)'
+    Write-Host '  WARN  Tests skipped. 80% coverage required before publishing to Gallery.' -ForegroundColor Yellow
 } else {
     Write-PipelineStep -Index $step -Total $totalSteps -Label 'Tests (Pester)'
 
     $testArgs = @{}
+    if (-not $NoCoverage) { $testArgs['Coverage'] = $true }
 
-    if (-not $NoCoverage) {
-        $testArgs.Coverage = $true
-    }
-
+    $LASTEXITCODE = 0
     & (Join-Path -Path $privateTools -ChildPath 'Tests.ps1') @testArgs
 
     if ($LASTEXITCODE -ne 0) {
@@ -337,6 +350,7 @@ if ($SkipBuild) {
 } else {
     Write-PipelineStep -Index $step -Total $totalSteps -Label 'Build'
 
+    $LASTEXITCODE = 0
     & (Join-Path -Path $privateTools -ChildPath 'Build.ps1') -SkipLint -SkipTests
 
     if ($LASTEXITCODE -ne 0) {
@@ -352,6 +366,7 @@ if ($SkipBuild) {
         $step++
         Write-PipelineStep -Index $step -Total $totalSteps -Label 'Dev Import'
 
+        $LASTEXITCODE = 0
         & (Join-Path -Path $privateTools -ChildPath 'DevImport.ps1') -Quiet
 
         if ($LASTEXITCODE -ne 0) {
@@ -369,10 +384,11 @@ if ($SkipBuild) {
     $meta = Import-PowerShellDataFile -Path $manifestPath
 
     $requiredFields = [ordered]@{
-        ModuleVersion = $meta.ModuleVersion
-        Author        = $meta.Author
-        Description   = $meta.Description
-        RootModule    = $meta.RootModule
+        ModuleVersion    = $meta.ModuleVersion
+        Author           = $meta.Author
+        Description      = $meta.Description
+        RootModule       = $meta.RootModule
+        FormatsToProcess = if ($meta.FormatsToProcess.Count -gt 0) { 'present' } else { $null }
     }
 
     $manifestErrors = $requiredFields.GetEnumerator() |
@@ -404,6 +420,22 @@ if ($SkipBuild) {
 
         Write-PipelineResult -Success $true -Message "Published RDPControl v$version to PowerShell Gallery."
     }
+}
+
+# -- Step: DevImport ----------------------------------------------------------
+
+if ($DevImport) {
+    $step++
+    Write-PipelineStep -Index $step -Total $totalSteps -Label 'Dev Import (source)'
+
+    $LASTEXITCODE = 0
+    & (Join-Path -Path $privateTools -ChildPath 'DevImport.ps1') -Quiet
+
+    if ($LASTEXITCODE -ne 0) {
+        Stop-Pipeline -Reason 'Module import failed.'
+    }
+
+    Write-PipelineResult -Success $true -Message 'Module imported from source successfully.'
 }
 
 # -- Footer -------------------------------------------------------------------
