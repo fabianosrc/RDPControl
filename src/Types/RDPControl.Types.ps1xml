@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Types>
+    <Type>
+        <Name>RDPControl.DryRunResult</Name>
+        <Members>
+            <MemberSet>
+                <Name>PSStandardMembers</Name>
+                <Members>
+                    <PropertySet>
+                        <Name>DefaultDisplayPropertySet</Name>
+                        <ReferencedProperties>
+                            <Name>CurrentState</Name>
+                            <Name>TargetState</Name>
+                            <Name>SignatureFound</Name>
+                            <Name>SnapshotAction</Name>
+                        </ReferencedProperties>
+                    </PropertySet>
+                </Members>
+            </MemberSet>
+            <AliasProperty>
+                <Name>Current</Name>
+                <ReferencedMemberName>CurrentState</ReferencedMemberName>
+            </AliasProperty>
+            <AliasProperty>
+                <Name>Target</Name>
+                <ReferencedMemberName>TargetState</ReferencedMemberName>
+            </AliasProperty>
+            <ScriptProperty>
+                <Name>IsApplicable</Name>
+                <GetScriptBlock>$this.SignatureFound -eq $true</GetScriptBlock>
+            </ScriptProperty>
+            <ScriptProperty>
+                <Name>RequiresSnapshot</Name>
+                <GetScriptBlock>$this.SnapshotAction -like 'Create*'</GetScriptBlock>
+            </ScriptProperty>
+        </Members>
+    </Type>
+</Types>
