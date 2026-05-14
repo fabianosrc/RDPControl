@@ -148,6 +148,7 @@ function Write-PipelineResult {
 }
 
 function Stop-Pipeline {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
     param([string]$Reason)
     Write-Host ''
     Write-Host "  [ABORTED] $Reason" -ForegroundColor Red
