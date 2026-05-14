@@ -320,9 +320,7 @@ internal static extern bool GetTokenInformation(
     {
         if (string.IsNullOrWhiteSpace(privilegeName))
         {
-            throw new ArgumentNullException(
-                nameof(privilegeName)
-            );
+            throw new ArgumentNullException("privilegeName");
         }
 
         NativeMethods.LUID luid;
@@ -366,9 +364,7 @@ public sealed class PrivilegeScope : IDisposable
     {
         if (string.IsNullOrWhiteSpace(privilegeName))
         {
-            throw new ArgumentNullException(
-                nameof(privilegeName)
-            );
+            throw new ArgumentNullException("privilegeName");
         }
 
         _privilegeName = privilegeName;
