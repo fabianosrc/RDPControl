@@ -76,6 +76,14 @@ function New-StoreSnapshot {
             return
         }
 
+        # Idempotency check - return existing snapshot ID if hash already exists
+        $existing = @(Get-StoreSnapshot -Sha256 $Sha256)
+
+        if ($existing.Count -gt 0) {
+            Write-Verbose -Message "Snapshot already exists for hash [$Sha256]. Reusing ID: $($existing[0].id)."
+            return $existing[0].id
+        }
+
         $snapshotParams = @{
             BinaryPath    = $BinaryPath
             BinaryVersion = $BinaryVersion
