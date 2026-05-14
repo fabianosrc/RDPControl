@@ -86,7 +86,7 @@ function Add-RdpUser {
                 #         error from Add-LocalGroupMember.
                 [void]$existingMembers.Add($shortId)
 
-                # FIX #7: Build the audit details string directly — the intermediate
+                # FIX #7: Build the audit details string directly - the intermediate
                 #         array added no value.
                 New-StoreAuditRecord -Operation 'Add-RdpUser' -Details "Identity=$id;Action=Added" | Out-Null
 
