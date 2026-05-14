@@ -8,10 +8,10 @@ known conditional branch signatures.
 
 Currently supported branch types:
 
-    Equal
+    jne
         0F 84  -> conditional branch if equal / zero
 
-    NotEqual
+    jz
         75     -> conditional branch if not equal / non-zero
 
 Returns 'Unknown' when no supported branch signature is identified.
@@ -36,8 +36,8 @@ System.String
 
 Returns one of the following values:
 
-- Equal
-- NotEqual
+- jne
+- jz
 - Unknown
 
 .NOTES
@@ -72,14 +72,14 @@ function Get-BranchType {
 
             # NotEqual branch signature (75)
             if ($Bytes[$branchIndex] -eq 0x75) {
-                Write-Verbose -Message ("Detected branch type: NotEqual")
-                return 'NotEqual'
+                Write-Verbose -Message 'Detected branch type: jne'
+                return 'jne'
             }
 
             # Equal branch signature (0F 84)
             if (Test-ByteSequence -Source $Bytes -Offset $branchIndex -Expected @(0x0F, 0x84)) {
-                Write-Verbose -Message ("Detected branch type: Equal")
-                return 'Equal'
+                Write-Verbose -Message 'Detected branch type: jz'
+                return 'jz'
             }
 
             Write-Verbose -Message ("No supported branch signature detected.")
