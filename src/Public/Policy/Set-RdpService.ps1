@@ -17,8 +17,8 @@ Enables Remote Desktop access.
 Disables Remote Desktop access.
 
 .PARAMETER Force
-Bypasses the standard confirmation prompt.
-Does not bypass lock-out protection confirmation.
+Overrides the standard confirmation prompt.
+Does not override lock-out protection confirmation.
 
 .EXAMPLE
 PS C:\> Set-RdpService -Enabled
