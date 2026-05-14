@@ -58,7 +58,7 @@ function Find-BinarySignature {
     [CmdletBinding()]
     [OutputType([pscustomobject])]
     param (
-        [Parameter(Mandatory, ValueFromPipelineByPropertyName)]
+        [Parameter(Mandatory)]
         [ValidateNotNullOrEmpty()]
         [byte[]]$Bytes
     )
