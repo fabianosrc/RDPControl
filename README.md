@@ -304,15 +304,25 @@ All development tasks are orchestrated via a single entry point:
 # Full pipeline: lint → validate → test → build
 .\tools\Invoke-Pipeline.ps1
 
-# Development workflow: lint + validate + reimport (no tests required)
+# Dev workflow: lint + validate + reimport from source (fastest, no build)
+.\tools\Invoke-Pipeline.ps1 -SkipTests -SkipBuild -DevImport
+
+# Dev workflow with build: lint + validate + build + reimport
 .\tools\Invoke-Pipeline.ps1 -SkipTests -ImportAfterBuild
 
-# Run only lint and validation (fastest feedback loop)
+# Lint and validation only (no tests, no build, no import)
 .\tools\Invoke-Pipeline.ps1 -SkipTests -SkipBuild
 
 # Full pipeline + publish to Gallery (requires PSGALLERY_API_KEY)
 .\tools\Invoke-Pipeline.ps1 -Publish
 ```
+
+| Scenario | Command |
+|---|---|
+| Quick dev loop | `-SkipTests -SkipBuild -DevImport` |
+| Validate before commit | `-SkipTests -SkipBuild` |
+| Full local test | *(no flags)* |
+| Publish to Gallery | `-Publish` |
 
 > **Note:** `-Publish` is blocked when `-SkipTests` is active.
 > 80% Pester code coverage is required before publishing to the PowerShell Gallery.
