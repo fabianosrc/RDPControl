@@ -78,7 +78,7 @@ function Get-BinaryHash {
 
                 Write-Verbose -Message ("SHA256 hash computed successfully.")
 
-                return $hash
+                return $hash.ToLower()
             } finally {
                 if ($null -ne $sha256) {
                     $sha256.Dispose()
