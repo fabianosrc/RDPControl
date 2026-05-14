@@ -9,21 +9,24 @@ candidate against semantic context windows before and after the match.
 This validation strategy helps reduce false positives by ensuring the matched
 sequence is surrounded by expected instruction patterns.
 
-The function returns a structured object describing the located signature,
-replacement metadata, contextual byte windows, and validation statistics.
+Uses Array.IndexOf for fast native scanning instead of byte-by-byte iteration,
+significantly reducing search time on large binaries.
+
+The search logic runs in the end block to ensure it executes exactly once,
+regardless of how the input is provided.
 
 .PARAMETER Bytes
 Byte array representing the Portable Executable (PE) content.
 
 Accepts pipeline input by property name and is compatible with objects
-returned by Import-PEFile.
+returned by Read-PEFile.
 
 .EXAMPLE
-PS C:\> $pe = Import-PEFile -Path "$env:SystemRoot\System32\example.dll"
+PS C:\> $pe = Read-PEFile -Path "$env:SystemRoot\System32\example.dll"
 PS C:\> Find-BinarySignature -Bytes $pe.Bytes
 
 .EXAMPLE
-PS C:\> Import-PEFile -Path ".\example.dll" | Find-BinarySignature -Verbose
+PS C:\> Read-PEFile -Path ".\example.dll" | Find-BinarySignature -Verbose
 
 .INPUTS
 System.Byte[]
@@ -54,83 +57,99 @@ It does not modify the source binary.
 function Find-BinarySignature {
     [CmdletBinding()]
     [OutputType([pscustomobject])]
-    param(
+    param (
         [Parameter(Mandatory, ValueFromPipelineByPropertyName)]
         [ValidateNotNullOrEmpty()]
         [byte[]]$Bytes
     )
 
     begin {
-        # Core byte sequence
+        # Core byte sequence to locate
         [byte[]]$corePattern = 0x39, 0x81, 0x3C, 0x06, 0x00, 0x00
 
         [int]$beforeWindowSize = 6
         [int]$afterWindowSize  = 6
         [int]$coreSize         = $corePattern.Length
+
+        # Pre-filter bytes for fast Array.IndexOf scanning
+        [byte]$firstByte  = $corePattern[0]
+        [byte]$secondByte = $corePattern[1]
     }
 
-    process {
+    end {
         try {
             if ($Bytes.Length -lt ($beforeWindowSize + $coreSize + $afterWindowSize)) {
-                $ex = [System.IO.InvalidDataException]::new(
-                    "The provided byte array is too small for signature analysis."
+                $PSCmdlet.ThrowTerminatingError(
+                    [System.Management.Automation.ErrorRecord]::new(
+                        [System.IO.InvalidDataException]::new(
+                            'The provided byte array is too small for signature analysis.'
+                        ),
+                        'BinaryTooSmall',
+                        [System.Management.Automation.ErrorCategory]::InvalidData,
+                        $Bytes
+                    )
                 )
-
-                $err = [System.Management.Automation.ErrorRecord]::new(
-                    $ex,
-                    "BinaryTooSmall",
-                    [System.Management.Automation.ErrorCategory]::InvalidData,
-                    $Bytes
-                )
-
-                $PSCmdlet.ThrowTerminatingError($err)
             }
 
             [int]$discardedMatches = 0
-            [int]$searchLimit      = $Bytes.Length - $coreSize
+            [int]$searchLimit      = $Bytes.Length - $coreSize - $afterWindowSize
+            [int]$i                = $beforeWindowSize
 
             Write-Verbose -Message ("Searching {0} bytes for binary signature..." -f $Bytes.Length)
 
-            for ([int]$i = 0; $i -le $searchLimit; $i++) {
-                # Prevent out-of-bounds access
-                if (($i - $beforeWindowSize) -lt 0) {
+            while ($i -le $searchLimit) {
+                # Fast scan: native Array.IndexOf to find next first byte
+                $i = [Array]::IndexOf($Bytes, $firstByte, $i, ($searchLimit - $i + 1))
+
+                if ($i -lt 0) {
+                    break
+                }
+
+                # Quick pre-filter: check second byte before full sequence check
+                if ($Bytes[$i + 1] -ne $secondByte) {
+                    $i++
                     continue
                 }
 
-                if (($i + $coreSize + $afterWindowSize) -gt $Bytes.Length) {
-                    continue
-                }
-
-                # Step 1 - locate core sequence
+                # Full core sequence validation
                 if (-not (Test-ByteSequence -Source $Bytes -Offset $i -Expected $corePattern)) {
+                    $i++
                     continue
                 }
 
                 Write-Verbose -Message ("Candidate signature detected at offset 0x{0:X8}" -f $i)
 
-                # Step 2 - validate preceding instruction context
-                $beforeInstruction = Get-BeforeInstruction -Bytes $Bytes -CoreIndex $i
+                # Validate preceding instruction context
+                $beforeInstruction = Get-BeforeInstruction -Bytes $Bytes -ReferenceIndex $i
 
                 if ($null -eq $beforeInstruction) {
-                    Write-Verbose -Message "Context validation failed (preceding window)."
+                    Write-Verbose -Message 'Context validation failed (preceding window).'
                     $discardedMatches++
+                    $i++
                     continue
                 }
 
-                Write-Verbose -Message "Preceding context validated successfully."
+                Write-Verbose -Message 'Preceding context validated successfully.'
 
-                # Step 3 - validate following branch instruction
-                [string]$branchType = Get-BranchType -Bytes $Bytes -CoreIndex $i -CoreSize $coreSize
+                # Validate following branch instruction
+                $branchParams = @{
+                    Bytes          = $Bytes
+                    ReferenceIndex = $i
+                    ReferenceLength = $coreSize
+                }
 
-                if ($branchType -eq 'unknown') {
-                    Write-Verbose -Message "Context validation failed (following branch)."
+                [string]$branchType = Get-BranchType @branchParams
+
+                if ($branchType -eq 'Unknown') {
+                    Write-Verbose -Message 'Context validation failed (following branch).'
                     $discardedMatches++
+                    $i++
                     continue
                 }
 
                 Write-Verbose -Message ("Branch instruction identified: {0}" -f $branchType)
 
-                # Step 4 - derive replacement bytes dynamically
+                # Derive replacement bytes dynamically
                 $replacementParams = @{
                     ModRM        = $beforeInstruction.ModRM
                     Displacement = $beforeInstruction.Displacement
@@ -139,9 +158,8 @@ function Find-BinarySignature {
 
                 [byte[]]$replacementBytes = New-ReplacementByte @replacementParams
 
-                Write-Verbose -Message "Replacement sequence generated successfully."
+                Write-Verbose -Message 'Replacement sequence generated successfully.'
 
-                # Step 5 - determine write offset based on branch context
                 [int]$writeIndex = if ($branchType -eq 'jne') {
                     $i - $beforeWindowSize
                 } else {
@@ -164,9 +182,9 @@ function Find-BinarySignature {
                 }
             }
 
-            Write-Verbose -Message ("No validated signature was identified. Discarded matches: {0}" -f $discardedMatches)
+            Write-Verbose -Message ("No validated signature identified. Discarded matches: {0}" -f $discardedMatches)
 
-            return [PSCustomObject]@{
+            [PSCustomObject]@{
                 PSTypeName       = 'RDPControl.BinarySignature'
                 Found            = $false
                 SignatureIndex   = -1
@@ -181,14 +199,14 @@ function Find-BinarySignature {
                 DiscardedMatches = $discardedMatches
             }
         } catch {
-            $err = [System.Management.Automation.ErrorRecord]::new(
-                $_.Exception,
-                "BinarySignatureSearchFailed",
-                [System.Management.Automation.ErrorCategory]::InvalidData,
-                $Bytes
+            $PSCmdlet.ThrowTerminatingError(
+                [System.Management.Automation.ErrorRecord]::new(
+                    $_.Exception,
+                    'BinarySignatureSearchFailed',
+                    [System.Management.Automation.ErrorCategory]::InvalidData,
+                    $Bytes
+                )
             )
-
-            $PSCmdlet.ThrowTerminatingError($err)
         }
     }
 }
