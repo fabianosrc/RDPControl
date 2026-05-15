@@ -66,7 +66,7 @@ function Restore-RdpSnapshot {
         }
 
         $snapshot = if ($PSCmdlet.ParameterSetName -eq 'ById') {
-            $records = Get-StoreSnapshot -Id $Id
+            $records = @(Get-StoreSnapshot -Id $Id)
 
             if ($null -eq $records -or $records.Count -eq 0) {
                 $PSCmdlet.ThrowTerminatingError(
@@ -81,7 +81,7 @@ function Restore-RdpSnapshot {
 
             $records[0]
         } else {
-            $records = Get-StoreSnapshot -Latest
+            $records = @(Get-StoreSnapshot -Latest)
 
             if ($null -eq $records -or $records.Count -eq 0) {
                 $PSCmdlet.ThrowTerminatingError(
