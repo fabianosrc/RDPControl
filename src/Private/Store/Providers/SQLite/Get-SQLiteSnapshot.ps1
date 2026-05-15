@@ -1,10 +1,11 @@
 ﻿<#
 .SYNOPSIS
-Queries snapshot records from the SQLite store.
+Queries snapshot records from the SQLite database.
 
 .DESCRIPTION
-Retrieves snapshot records from the SQLite provider database using
-optional filtering criteria.
+SQLite provider implementation for snapshot queries.
+Use -IncludeBlob only when the binary content is needed (e.g. restore).
+Omitting -IncludeBlob avoids reading large binary data unnecessarily.
 
 .PARAMETER Id
 Returns the snapshot with the specified ID.
@@ -13,138 +14,124 @@ Returns the snapshot with the specified ID.
 Returns the snapshot matching the specified SHA256 hash.
 
 .PARAMETER Enforced
-Filters snapshots by enforcement state.
+Filters by enforced state.
 
 .PARAMETER Latest
 Returns only the most recent snapshot.
 
 .PARAMETER Top
-Limits the number of returned records.
+Returns the specified number of most recent snapshots.
+
+.PARAMETER IncludeBlob
+Includes the binary_blob column in the result.
+Use only when binary content is required (e.g. restore operations).
 
 .OUTPUTS
-PSCustomObject
+PSCustomObject[]
 #>
 function Get-SQLiteSnapshot {
     [CmdletBinding()]
-    [OutputType([pscustomobject])]
+    [OutputType([pscustomobject[]])]
     param (
         [Parameter()]
-        [ValidateRange(1, [int]::MaxValue)]
         [int]$Id,
 
         [Parameter()]
-        [ValidateNotNullOrEmpty()]
         [string]$Sha256,
 
         [Parameter()]
-        [nullable[bool]]$Enforced,
+        [bool]$Enforced,
 
         [Parameter()]
         [switch]$Latest,
 
         [Parameter()]
-        [ValidateRange(1, 1000)]
         [int]$Top,
 
         [Parameter()]
-        [string]$ConnectionString = (Get-StoreConnectionString)
+        [switch]$IncludeBlob
     )
 
-    begin {
-        $connection = $null
-        $command    = $null
-        $reader     = $null
-    }
-
     process {
+        $connection = $null
+
         try {
-            $connection = [System.Data.SQLite.SQLiteConnection]::new($ConnectionString)
+            $connection = [System.Data.SQLite.SQLiteConnection]::new((Get-StoreConnectionString))
             $connection.Open()
 
-            $command = $connection.CreateCommand()
-            $command.CommandTimeout = 30
-
-            $sql = @"
-                SELECT
-                    id,
-                    binary_path,
-                    binary_version,
-                    os_build,
-                    sha256,
-                    enforced,
-                    created_at
-                FROM snapshots
-"@
-
+            $command    = $connection.CreateCommand()
             $where = [System.Collections.Generic.List[string]]::new()
+
+            $columns = 'id, binary_path, binary_version, os_build, sha256, enforced, created_at'
+
+            if ($IncludeBlob) {
+                $columns += ', binary_blob'
+            }
+
+            $sql = "SELECT $columns FROM snapshots"
 
             if ($PSBoundParameters.ContainsKey('Id')) {
                 $where.Add('id = @id')
-                $null = $command.Parameters.AddWithValue('@id', $Id)
+                $command.Parameters.AddWithValue('@id', $Id) | Out-Null
             }
 
             if ($PSBoundParameters.ContainsKey('Sha256')) {
                 $where.Add('sha256 = @sha256')
-                $null = $command.Parameters.AddWithValue('@sha256', $Sha256)
+                $command.Parameters.AddWithValue('@sha256', $Sha256) | Out-Null
             }
 
             if ($PSBoundParameters.ContainsKey('Enforced')) {
                 $where.Add('enforced = @enforced')
-                $null = $command.Parameters.AddWithValue('@enforced', [int]$Enforced)
+                $command.Parameters.AddWithValue('@enforced', [int]([bool]$Enforced)) | Out-Null
             }
 
             if ($where.Count -gt 0) {
-                $sql += " WHERE " + ($where -join " AND ")
+                $sql += ' WHERE ' + ($where -join ' AND ')
             }
 
-            $sql += " ORDER BY created_at DESC"
+            $sql += ' ORDER BY id DESC'
 
             if ($Latest) {
-                $sql += " LIMIT 1"
+                $sql += ' LIMIT 1'
             } elseif ($PSBoundParameters.ContainsKey('Top')) {
-                $sql += " LIMIT $Top"
+                $sql += ' LIMIT @top'
+                $command.Parameters.AddWithValue('@top', $Top) | Out-Null
             }
 
             $command.CommandText = $sql
+            $reader              = $command.ExecuteReader()
+            $results             = [System.Collections.Generic.List[object]]::new()
 
-            $reader = $command.ExecuteReader()
-
-            while ($reader.Read()) {
-                $obj = [ordered]@{}
-
-                for ($i = 0; $i -lt $reader.FieldCount; $i++) {
-                    $obj[$reader.GetName($i)] = if ($reader.IsDBNull($i)) {
-                        $null
-                    } else {
-                        $reader.GetValue($i)
+            try {
+                while ($reader.Read()) {
+                    $record = [ordered]@{}
+                    for ($i = 0; $i -lt $reader.FieldCount; $i++) {
+                        $record[$reader.GetName($i)] = if ($reader.IsDBNull($i)) {
+                            $null
+                        } else {
+                            $reader.GetValue($i)
+                        }
                     }
+
+                    $results.Add([pscustomobject]$record)
                 }
-
-                [pscustomobject]$obj
-            }
-        } catch {
-            $err = [System.Management.Automation.ErrorRecord]::new(
-                $_.Exception,
-                'SQLiteSnapshotQueryFailed',
-                [System.Management.Automation.ErrorCategory]::ReadError,
-                'snapshots'
-            )
-
-            $PSCmdlet.ThrowTerminatingError($err)
-        } finally {
-            if ($reader) {
+            } finally {
                 $reader.Dispose()
             }
 
-            if ($command) {
-                $command.Dispose()
-            }
-
-            if ($connection) {
-                if ($connection.State -eq 'Open') {
-                    $connection.Close()
-                }
-
+            $results.ToArray()
+        } catch {
+            $PSCmdlet.ThrowTerminatingError(
+                [System.Management.Automation.ErrorRecord]::new(
+                    $_.Exception,
+                    'SQLiteSnapshotQueryFailed',
+                    [System.Management.Automation.ErrorCategory]::ReadError,
+                    'snapshots'
+                )
+            )
+        } finally {
+            if ($null -ne $connection) {
+                $connection.Close()
                 $connection.Dispose()
             }
         }
