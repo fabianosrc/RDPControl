@@ -175,7 +175,20 @@ function Set-RdpSessionMode {
                 return
             }
 
-            $result = Invoke-Enforcement
+            try {
+    $result = Invoke-Enforcement
+}
+catch {
+    $PSCmdlet.ThrowTerminatingError(
+        [System.Management.Automation.ErrorRecord]::new(
+            $_.Exception,
+            'EnforcementFailed',
+            [System.Management.Automation.ErrorCategory]::OperationStopped,
+            $null
+        )
+    )
+    return
+}
 
             return [PSCustomObject]@{
                 State       = 'Enabled'
