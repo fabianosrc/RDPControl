@@ -121,9 +121,9 @@ function Undo-Enforcement {
             )
 
             # Step 2 - retrieve stored binary blob
-            $blobRecord = (Get-StoreSnapshot -Id $snapshot.id) | Select-Object -First 1
+            $blobRecord = (Get-StoreSnapshot -Id $snapshot.id -IncludeBlob) | Select-Object -First 1
 
-            if ($null -eq $blobRecord -or $null -eq $blobRecord.blob) {
+            if ($null -eq $blobRecord -or $null -eq $blobRecord.binary_blob) {
                 $err = [System.Management.Automation.ErrorRecord]::new(
                     [System.InvalidOperationException]::new(
                         'Snapshot blob data is missing or invalid.'
@@ -136,7 +136,7 @@ function Undo-Enforcement {
                 $PSCmdlet.ThrowTerminatingError($err)
             }
 
-            [byte[]]$blob = $blobRecord.blob
+            [byte[]]$blob = $blobRecord.binary_blob
 
             # Step 3 - preserve ACL and service state
             $originalAcl = Get-Acl -LiteralPath $targetPath
