@@ -11,10 +11,10 @@ the 'Stopped' state within the specified timeout.
 Maximum time in seconds to wait for the service to stop. Defaults to 30.
 
 .EXAMPLE
-PS C:\>Stop-TerminalService -Verbose
+PS C:\> Stop-TermService -Verbose
 
 .EXAMPLE
-PS C:\> Stop-TerminalService -TimeoutSeconds 60
+PS C:\> Stop-TermService -TimeoutSeconds 60
 
 .OUTPUTS
 None
@@ -34,7 +34,7 @@ function Stop-TermService {
     )
 
     $serviceName = 'TermService'
-    $service = Get-Service -Name $serviceName -ErrorAction Stop
+    $service     = Get-Service -Name $serviceName -ErrorAction Stop
 
     if ($service.Status -eq 'Stopped') {
         Write-Verbose -Message "$serviceName is already stopped."
@@ -45,10 +45,29 @@ function Stop-TermService {
 
     Stop-Service -Name $serviceName -Force -ErrorAction Stop
 
-    $service.WaitForStatus(
-        'Stopped',
-        [TimeSpan]::FromSeconds($TimeoutSeconds)
-    )
+    try {
+        $service.WaitForStatus('Stopped', [timespan]::FromSeconds($TimeoutSeconds))
+    } catch [System.ServiceProcess.TimeoutException] {
+        Write-Warning -Message "$serviceName did not stop within ${TimeoutSeconds}s. Forcing termination..."
 
-    Write-Verbose -Message "$serviceName stopped successfully."
+        $processId = Get-CimInstance -ClassName Win32_Service -Filter "Name='$serviceName'" |
+            Select-Object -ExpandProperty ProcessId
+
+        $process = if ($processId -gt 0) {
+            Get-Process -Id $processId -ErrorAction SilentlyContinue
+        }
+
+        if ($null -ne $process) {
+            $process.Kill()
+            $process.WaitForExit(5000)
+        }
+
+        $service.Refresh()
+
+        if ($service.Status -ne 'Stopped') {
+            throw "Failed to stop $serviceName even after forced termination."
+        }
+
+        Write-Verbose -Message "$serviceName forcefully terminated."
+    }
 }
