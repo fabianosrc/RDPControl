@@ -37,12 +37,33 @@ and a self-healing watchdog.
 
 ## Installation
 
+> ⚠️ **RDPControl is not yet published to the PowerShell Gallery.**
+> Publication is pending Pester test coverage requirements (80% minimum).
+> This does not affect usage — the module is fully functional and can be used
+> directly from source as described below.
+
+### From source (recommended while pre-release)
+
+```powershell
+# Clone the repository
+git clone https://github.com/fabianosrc/RDPControl.git
+cd RDPControl
+
+# Import directly from source (run as Administrator)
+Import-Module .\RDPControl.psd1 -Force
+
+# Or use the dev pipeline tool
+.\tools\Invoke-Pipeline.ps1 -SkipTests -SkipBuild -DevImport
+```
+
+### From PowerShell Gallery (coming soon)
+
 ```powershell
 Install-Module -Name RDPControl -Scope CurrentUser
 ```
 
-After installation, initialize the environment once (required before using any
-other cmdlet):
+After installation or import, initialize the environment once (required before
+using any other cmdlet):
 
 ```powershell
 # Must run as Administrator
@@ -138,6 +159,26 @@ binary without modifying anything. The result is a structured
 ```powershell
 # Analyze without applying
 Set-RdpSessionMode -Enabled -DryRun
+```
+
+```
+DryRun            : True (no changes applied)
+Current State     : Standard
+Target State      : Concurrent
+Binary Path       : C:\WINDOWS\System32\termsrv.dll
+Hash              : d6c1f5638a0f11de072e8b03c6328555a3f1d474c198487d5a2070b1e43f4627
+Snapshot Action   : Create new snapshot
+Signature Found   : True
+Signature Offset  : 0x0009A185
+Write Offset      : 0x0009A17F
+Branch Type       : jne
+Current Bytes     : 39 81 3C 06 00 00 75 16 48 8D 15 14
+Replacement Bytes : B8 00 01 00 00 89 81 38 06 00 00 90 EB
+Policy Applicable : True
+Requires Snapshot : True
+```
+
+```powershell
 
 # Export analysis as JSON (useful for CI/CD)
 Set-RdpSessionMode -Enabled -DryRun | ConvertTo-Json
