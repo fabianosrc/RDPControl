@@ -20,11 +20,19 @@ Returns only the most recent snapshot.
 .PARAMETER Top
 Returns the specified number of most recent snapshots.
 
+.PARAMETER IncludeBlob
+Includes the binary content in the result.
+Use only when binary data is required (e.g. restore operations).
+Omit for listing operations to avoid reading large binary data.
+
 .EXAMPLE
 PS C:\> Get-StoreSnapshot -Latest
 
 .EXAMPLE
 PS C:\> Get-StoreSnapshot -Enforced $true
+
+.EXAMPLE
+PS C:\> Get-StoreSnapshot -Id 1 -IncludeBlob
 
 .OUTPUTS
 PSCustomObject[]
@@ -46,7 +54,10 @@ function Get-StoreSnapshot {
         [switch]$Latest,
 
         [Parameter()]
-        [int]$Top
+        [int]$Top,
+
+        [Parameter()]
+        [switch]$IncludeBlob
     )
 
     begin {
