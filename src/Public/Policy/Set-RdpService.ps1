@@ -1,14 +1,24 @@
 ﻿<#
 .SYNOPSIS
-Enables or disables the Remote Desktop service.
+Enables or disables Remote Desktop access.
 
 .DESCRIPTION
-Controls the Remote Desktop configuration through the Windows Registry
-and the TermService service.
+Controls Remote Desktop access using the preferred CIM-based configuration
+method with automatic fallback to registry-based configuration.
 
-When disabling, detects whether the current session is an active
-Remote Desktop session and requires explicit confirmation to avoid
-accidental lock-out.
+The CIM method uses the Win32_TerminalServiceSetting class from the
+root/cimv2/TerminalServices namespace, which properly synchronizes:
+    - Windows Settings UI toggle
+    - Firewall configuration
+    - Remote Desktop operational state
+
+If the CIM method is unavailable or fails for any reason, the command
+automatically falls back to registry-based configuration to ensure
+compatibility across all supported Windows environments.
+
+When disabling Remote Desktop, the command detects whether the current
+session is an active Remote Desktop session and requires explicit
+confirmation to prevent accidental lock-out.
 
 .PARAMETER Enabled
 Enables Remote Desktop access.
@@ -17,8 +27,9 @@ Enables Remote Desktop access.
 Disables Remote Desktop access.
 
 .PARAMETER Force
-Overrides the standard confirmation prompt.
-Does not override lock-out protection confirmation.
+Suppresses the standard confirmation prompt.
+Does not suppress the lock-out protection confirmation when disabling
+from an active Remote Desktop session.
 
 .EXAMPLE
 PS C:\> Set-RdpService -Enabled
@@ -30,7 +41,7 @@ PS C:\> Set-RdpService -Disabled
 PS C:\> Set-RdpService -Disabled -Force
 
 .EXAMPLE
-PS C:\> Set-RdpService -Disabled -WhatIf
+PS C:\> Set-RdpService -Enabled -WhatIf
 
 .INPUTS
 None
@@ -39,10 +50,10 @@ None
 PSCustomObject
 
 Contains:
-- State
-- ConfiguredAt
+    State        [string] - 'Enabled' or 'Disabled'
+    Method       [string] - 'CIM' or 'RegistryFallback'
+    ConfiguredAt [string] - ISO 8601 UTC timestamp
 #>
-
 function Set-RdpService {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High', DefaultParameterSetName = 'Enabled')]
     [OutputType([pscustomobject])]
@@ -64,7 +75,8 @@ function Set-RdpService {
             $PSCmdlet.ThrowTerminatingError(
                 [System.Management.Automation.ErrorRecord]::new(
                     [System.UnauthorizedAccessException]::new(
-                        'Set-RdpService requires elevated privileges. Run PowerShell as Administrator.'
+                        'Set-RdpService requires elevated privileges. ' +
+                        'Run PowerShell as Administrator.'
                     ),
                     'ElevationRequired',
                     [System.Management.Automation.ErrorCategory]::PermissionDenied,
@@ -75,68 +87,50 @@ function Set-RdpService {
     }
 
     process {
-        $registryPath = 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server'
+        $stateResult = $null
 
-        $targetState = if ($Enabled) {
-            'Enabled'
-        } else {
-            'Disabled'
-        }
-
-        if ($Disabled -and (Test-IsRdpSession)) {
-
-            Write-Warning (
-                'You are currently connected through Remote Desktop. ' +
-                'Disabling the service may disconnect and lock you out.'
-            )
-
-            if ($PSCmdlet.ShouldProcess('Remote Desktop service', 'Disable (active RDP session detected)')) {
+        if ($Enabled) {
+            if (-not ($Force -or $PSCmdlet.ShouldProcess('Remote Desktop service', 'Enable'))) {
                 return
             }
-        }
 
-        if (-not $Force) {
-            if ($PSCmdlet.ShouldProcess('Remote Desktop service', $targetState)) {
-                return
-            }
-        }
+            $stateResult = Set-RdpAccessState -AllowConnections $true
 
-        try {
-            $registryParams = @{
-                Path  = $registryPath
-                Name  = 'fDenyTSConnections'
-                Type  = 'DWord'
-                Value = if ($Enabled) { 0 } else { 1 }
-            }
+            Start-TermService
 
-            Set-RegistryValue @registryParams
+            New-StoreAuditRecord -Operation 'Set-RdpService' -Details "State=Enabled;Method=$($stateResult.Method)" | Out-Null
 
-            if ($Enabled) {
-                Set-FirewallRule -Port (Get-RdpPort).Port
-
-                Start-TermService
-
-                Write-Verbose -Message 'Remote Desktop service enabled.'
-            } else {
-                Stop-TermService
-
-                Write-Verbose -Message 'Remote Desktop service disabled.'
-            }
-
-            New-StoreAuditRecord -Operation 'Set-RdpService' -Details "State=$targetState" | Out-Null
-        } catch {
-            $PSCmdlet.ThrowTerminatingError(
-                [System.Management.Automation.ErrorRecord]::new(
-                    $_.Exception,
-                    'SetRdpServiceFailed',
-                    [System.Management.Automation.ErrorCategory]::WriteError,
-                    $targetState
+            Write-Verbose -Message "Remote Desktop enabled via method: $($stateResult.Method)"
+        } elseif ($Disabled) {
+            # Lock-out protection - not overridable with -Force
+            if (Test-IsRdpSession) {
+                Write-Warning -Message (
+                    'You are currently connected via Remote Desktop. ' +
+                    'Disabling the service may lock you out of this session.'
                 )
-            )
+
+                if (-not $PSCmdlet.ShouldProcess('Remote Desktop service', 'Disable (active RDP session detected)')) {
+                    return
+                }
+            }
+
+            # Standard confirmation - overridable with -Force
+            if (-not ($Force -or $PSCmdlet.ShouldProcess('Remote Desktop service', 'Disable'))) {
+                return
+            }
+
+            Stop-TermService
+
+            $stateResult = Set-RdpAccessState -AllowConnections $false
+
+            New-StoreAuditRecord -Operation 'Set-RdpService' -Details "State=Disabled;Method=$($stateResult.Method)" | Out-Null
+
+            Write-Verbose -Message "Remote Desktop disabled via method: $($stateResult.Method)"
         }
 
         [PSCustomObject]@{
-            State        = $targetState
+            State        = $PSCmdlet.ParameterSetName
+            Method       = $stateResult.Method
             ConfiguredAt = (Get-Date).ToUniversalTime().ToString('o')
         }
     }
