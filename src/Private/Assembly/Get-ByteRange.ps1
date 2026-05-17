@@ -50,7 +50,7 @@ function Get-ByteRange {
         [byte[]]$Bytes,
 
         [Parameter(Mandatory)]
-        [int64]$Start,
+        [Int64]$Start,
 
         [Parameter(Mandatory)]
         [ValidateRange(0, [int]::MaxValue)]
@@ -59,17 +59,20 @@ function Get-ByteRange {
 
     process {
         if ($Bytes.Length -eq 0) {
-            return [byte[]]::new(0)
+            Write-Output -InputObject ([byte[]]::new(0)) -NoEnumerate
+            return
         }
 
         if ($Length -eq 0) {
-            return [byte[]]::new(0)
+            Write-Output -InputObject ([byte[]]::new(0)) -NoEnumerate
+            return
         }
 
         [Int64]$effectiveStart = [Math]::Max(0, $Start)
 
         if ($effectiveStart -ge $Bytes.Length) {
-            return [byte[]]::new(0)
+            Write-Output -InputObject ([byte[]]::new(0)) -NoEnumerate
+            return
         }
 
         [Int64]$availableLength = $Bytes.Length - $effectiveStart
@@ -77,7 +80,8 @@ function Get-ByteRange {
         [int]$effectiveLength = [Math]::Min($Length, $availableLength)
 
         if ($effectiveLength -le 0) {
-            return [byte[]]::new(0)
+            Write-Output -InputObject ([byte[]]::new(0)) -NoEnumerate
+            return
         }
 
         [byte[]]$result = [byte[]]::new($effectiveLength)
@@ -90,6 +94,6 @@ function Get-ByteRange {
             $effectiveLength
         )
 
-        return $result
+        Write-Output -InputObject $result -NoEnumerate
     }
 }
