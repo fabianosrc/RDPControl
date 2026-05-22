@@ -176,7 +176,26 @@ function Invoke-Enforcement {
             try {
                 Grant-ProtectedFileAccess -Path $targetPath
 
-                Write-BinaryByte -Path $targetPath -Offset $signature.WriteIndex -Bytes $signature.ReplacementBytes
+                $maxRetries = 3
+                $retryDelay = 2
+
+                for ($attempt = 1; $attempt -le $maxRetries; $attempt++) {
+                    try {
+                        Write-BinaryByte -Path $targetPath -Offset $signature.WriteIndex -Bytes $signature.ReplacementBytes
+                        break
+                    } catch {
+                        if ($attempt -ge $maxRetries) {
+                            throw
+                        }
+
+                        Write-Verbose -Message (
+                            "Binary file handle not yet released. " +
+                            "Retry $attempt of $maxRetries in ${retryDelay}s..."
+                        )
+
+                        Start-Sleep -Seconds $retryDelay
+                    }
+                }
 
                 Write-Verbose -Message "Replacement bytes written at $($signature.WriteOffset)."
             } finally {
