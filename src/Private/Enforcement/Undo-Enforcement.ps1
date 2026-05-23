@@ -31,10 +31,10 @@ PS C:\> Undo-Enforcement -SnapshotId 3
 
 .OUTPUTS
 PSCustomObject with properties:
-    Success       [bool]   - whether restore succeeded
-    SnapshotId    [long]   - restored snapshot identifier
-    Hash          [string] - SHA256 of restored binary
-    RestoredAtUtc [string] - ISO 8601 UTC timestamp
+    Success    [bool]   - whether restore succeeded
+    SnapshotId [long]   - restored snapshot identifier
+    Hash       [string] - SHA256 of restored binary
+    RestoredAt [string] - ISO 8601 UTC timestamp
 #>
 function Undo-Enforcement {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
@@ -306,7 +306,7 @@ function Undo-Enforcement {
                 Success       = $true
                 SnapshotId    = $snapshot.id
                 Hash          = $restoredHash
-                RestoredAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+                RestoredAt = (Get-Date).ToUniversalTime().ToString('o')
             }
         } catch {
             if ($_ -is [System.Management.Automation.ErrorRecord]) {

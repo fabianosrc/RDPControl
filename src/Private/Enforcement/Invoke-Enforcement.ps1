@@ -208,7 +208,13 @@ function Invoke-Enforcement {
 
                 for ($attempt = 1; $attempt -le $maxRetries; $attempt++) {
                     try {
-                        Write-BinaryByte -Path $targetPath -Offset $signature.WriteIndex -Bytes $signature.ReplacementBytes
+                        $writeParams = @{
+                            Path   = $targetPath
+                            Offset = $signature.WriteIndex
+                            Bytes  = $signature.ReplacementBytes
+                        }
+
+                        Write-BinaryByte @writeParams | Out-Null
                         break
                     } catch {
                         if ($attempt -eq $maxRetries) {
