@@ -57,7 +57,7 @@ PS C:\> Set-RdpSessionMode -Enabled -DryRun
 PS C:\> Set-RdpSessionMode -Enabled -DryRun | ConvertTo-Json
 
 .EXAMPLE
-PS C:\> if (-not (Set-RdpSessionMode -Enabled -DryRun).Applicable) { throw 'Signature not found.' }
+PS C:\> if (-not (Set-RdpSessionMode -Enabled -DryRun).IsApplicable) { throw 'Signature not found.' }
 
 .INPUTS
 None
@@ -107,6 +107,11 @@ function Set-RdpSessionMode {
     }
 
     process {
+
+        # ---------------------------------------------------------------------
+        # DryRun
+        # ---------------------------------------------------------------------
+
         if ($DryRun) {
             Write-Verbose -Message '[DryRun] Reading target binary.'
             $assembly = Read-PEFile -Path $targetPath
@@ -123,30 +128,27 @@ function Set-RdpSessionMode {
                 'Standard'
             }
 
-            $targetState = if ($Enabled) {
+            $targetState  = if ($Enabled) {
                 'Concurrent'
             } else {
                 'Standard'
             }
 
             $existingSnapshot = @(Get-StoreSnapshot -Sha256 $hash)
+
             $snapshotAction   = if ($existingSnapshot.Count -gt 0) {
-                "Reuse existing snapshot (ID: $($existingSnapshot[0].Id))"
+                "Reuse existing snapshot (ID: $($existingSnapshot[0].id))"
             } else {
                 'Create new snapshot'
             }
 
-            $currentBytesHex = $null
-
-            if ($signature.Found) {
-                [byte[]]$corePattern = 0x39, 0x81, 0x3C, 0x06, 0x00, 0x00
-                $currentBytesHex     = [string]::Join(' ', (($corePattern + $signature.ContextAfter) |
-                    ForEach-Object { $_.ToString('X2') }
-                ))
+            # CurrentBytes comes directly from Find-BinarySignature -
+            # no internal knowledge of the core pattern required here
+            $currentBytesHex = if ($signature.Found) {
+                [string]::Join(' ', ($signature.CurrentBytes | ForEach-Object { $_.ToString('X2') }))
             }
 
             $result = [PSCustomObject]@{
-                IsApplicable    = $signature.Found
                 CurrentState    = $currentState
                 TargetState     = $targetState
                 BinaryPath      = $targetPath
@@ -165,6 +167,10 @@ function Set-RdpSessionMode {
             return $result
         }
 
+        # ---------------------------------------------------------------------
+        # Enable enforcement
+        # ---------------------------------------------------------------------
+
         if ($Enabled) {
             if (-not $Force -and (Test-EnforcementState)) {
                 Write-Warning -Message 'Multi-session is already enabled. Use -Force to re-apply.'
@@ -176,19 +182,13 @@ function Set-RdpSessionMode {
             }
 
             try {
-    $result = Invoke-Enforcement
-}
-catch {
-    $PSCmdlet.ThrowTerminatingError(
-        [System.Management.Automation.ErrorRecord]::new(
-            $_.Exception,
-            'EnforcementFailed',
-            [System.Management.Automation.ErrorCategory]::OperationStopped,
-            $null
-        )
-    )
-    return
-}
+                $result = Invoke-Enforcement
+            } catch {
+                if ($_ -is [System.Management.Automation.ErrorRecord]) {
+                    $PSCmdlet.ThrowTerminatingError($_)
+                }
+                throw
+            }
 
             return [PSCustomObject]@{
                 State       = 'Enabled'
@@ -198,6 +198,10 @@ catch {
                 EnforcedAt  = $result.EnforcedAt
             }
         }
+
+        # ---------------------------------------------------------------------
+        # Disable enforcement
+        # ---------------------------------------------------------------------
 
         if ($Disabled) {
             if (-not $Force -and -not (Test-EnforcementState)) {
@@ -209,7 +213,14 @@ catch {
                 return
             }
 
-            $result = Undo-Enforcement
+            try {
+                $result = Undo-Enforcement
+            } catch {
+                if ($_ -is [System.Management.Automation.ErrorRecord]) {
+                    $PSCmdlet.ThrowTerminatingError($_)
+                }
+                throw
+            }
 
             return [PSCustomObject]@{
                 State      = 'Disabled'

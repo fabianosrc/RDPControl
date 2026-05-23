@@ -26,12 +26,11 @@ function Test-EnforcementState {
     param ()
 
     process {
-        try {
-            $targetBinary = 'termsrv.dll'
-            $targetPath   = Join-Path -Path $env:SystemRoot -ChildPath "System32\$targetBinary"
+        $targetPath = Join-Path -Path $env:SystemRoot -ChildPath 'System32\termsrv.dll'
 
-            if (-not (Test-Path -LiteralPath $targetPath -PathType Leaf)) {
-                $err = [System.Management.Automation.ErrorRecord]::new(
+        if (-not (Test-Path -LiteralPath $targetPath -PathType Leaf)) {
+            $PSCmdlet.ThrowTerminatingError(
+                [System.Management.Automation.ErrorRecord]::new(
                     [System.IO.FileNotFoundException]::new(
                         'Target binary was not found.',
                         $targetPath
@@ -40,37 +39,31 @@ function Test-EnforcementState {
                     [System.Management.Automation.ErrorCategory]::ObjectNotFound,
                     $targetPath
                 )
-
-                $PSCmdlet.ThrowTerminatingError($err)
-            }
-
-            $enforcedSnapshot = (Get-StoreSnapshot -Enforced $true -Latest) | Select-Object -First 1
-
-            if ($null -eq $enforcedSnapshot) {
-                Write-Verbose -Message 'No enforced snapshot found.'
-                return $false
-            }
-
-            Write-Verbose -Message 'Computing current binary hash.'
-
-            $assembly    = Read-PEFile -Path $targetPath
-            $currentHash = Get-BinaryHash -Bytes $assembly.Bytes
-            $isEnforced  = $currentHash -eq $enforcedSnapshot.sha256
-
-            Write-Verbose -Message "Current hash : $currentHash"
-            Write-Verbose -Message "Snapshot hash: $($enforcedSnapshot.sha256)"
-            Write-Verbose -Message "State match  : $isEnforced"
-
-            return $isEnforced
-        } catch {
-            $err = [System.Management.Automation.ErrorRecord]::new(
-                $_.Exception,
-                'TestEnforcementStateFailed',
-                [System.Management.Automation.ErrorCategory]::InvalidData,
-                $targetPath
             )
-
-            $PSCmdlet.ThrowTerminatingError($err)
         }
+
+        $enforcedSnapshot = @(Get-StoreSnapshot -Enforced $true -Latest)[0]
+
+        if ($null -eq $enforcedSnapshot) {
+            Write-Verbose -Message 'No enforced snapshot is available.'
+            $false
+            return
+        }
+
+        Write-Verbose -Message 'Computing current binary hash.'
+
+        $assembly = Read-PEFile -Path $targetPath
+
+        $currentHash = (Get-BinaryHash -Bytes $assembly.Bytes).Trim().ToLowerInvariant()
+
+        $snapshotHash = ($enforcedSnapshot.sha256).Trim().ToLowerInvariant()
+
+        $matchesEnforcedSnapshot = $currentHash -eq $snapshotHash
+
+        Write-Verbose -Message "Current hash : $currentHash"
+        Write-Verbose -Message "Snapshot hash: $snapshotHash"
+        Write-Verbose -Message "State match  : $matchesEnforcedSnapshot"
+
+        $matchesEnforcedSnapshot
     }
 }

@@ -18,9 +18,6 @@ regardless of how the input is provided.
 .PARAMETER Bytes
 Byte array representing the Portable Executable (PE) content.
 
-Accepts pipeline input by property name and is compatible with objects
-returned by Read-PEFile.
-
 .EXAMPLE
 PS C:\> $pe = Read-PEFile -Path "$env:SystemRoot\System32\example.dll"
 PS C:\> Find-BinarySignature -Bytes $pe.Bytes
@@ -46,6 +43,7 @@ Returns an object with the following properties:
 - ReplacementHex    [string]
 - ContextBefore     [byte[]]
 - ContextAfter      [byte[]]
+- CurrentBytes      [byte[]]
 - DiscardedMatches  [int]
 
 .NOTES
@@ -98,6 +96,7 @@ function Find-BinarySignature {
             Write-Verbose -Message ("Searching {0} bytes for binary signature..." -f $Bytes.Length)
 
             while ($i -le $searchLimit) {
+
                 # Fast scan: native Array.IndexOf to find next first byte
                 $i = [Array]::IndexOf($Bytes, $firstByte, $i, ($searchLimit - $i + 1))
 
@@ -133,8 +132,8 @@ function Find-BinarySignature {
 
                 # Validate following branch instruction
                 $branchParams = @{
-                    Bytes          = $Bytes
-                    ReferenceIndex = $i
+                    Bytes           = $Bytes
+                    ReferenceIndex  = $i
                     ReferenceLength = $coreSize
                 }
 
@@ -178,13 +177,14 @@ function Find-BinarySignature {
                     ReplacementHex   = [string]::Join(' ', ($replacementBytes | ForEach-Object { $_.ToString('X2') }))
                     ContextBefore    = Get-ByteRange -Bytes $Bytes -Start ($i - $beforeWindowSize) -Length $beforeWindowSize
                     ContextAfter     = Get-ByteRange -Bytes $Bytes -Start ($i + $coreSize) -Length $afterWindowSize
+                    CurrentBytes     = Get-ByteRange -Bytes $Bytes -Start $i -Length ($coreSize + $afterWindowSize)
                     DiscardedMatches = $discardedMatches
                 }
             }
 
             Write-Verbose -Message ("No validated signature identified. Discarded matches: {0}" -f $discardedMatches)
 
-            [PSCustomObject]@{
+            [pscustomobject]@{
                 PSTypeName       = 'RDPControl.BinarySignature'
                 Found            = $false
                 SignatureIndex   = -1
@@ -196,17 +196,15 @@ function Find-BinarySignature {
                 ReplacementHex   = $null
                 ContextBefore    = $null
                 ContextAfter     = $null
+                CurrentBytes     = $null
                 DiscardedMatches = $discardedMatches
             }
         } catch {
-            $PSCmdlet.ThrowTerminatingError(
-                [System.Management.Automation.ErrorRecord]::new(
-                    $_.Exception,
-                    'BinarySignatureSearchFailed',
-                    [System.Management.Automation.ErrorCategory]::InvalidData,
-                    $Bytes
-                )
-            )
+            if ($_ -is [System.Management.Automation.ErrorRecord]) {
+                $PSCmdlet.ThrowTerminatingError($_)
+            }
+
+            throw
         }
     }
 }

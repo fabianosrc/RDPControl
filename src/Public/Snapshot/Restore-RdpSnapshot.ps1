@@ -6,6 +6,15 @@ Restores the target binary from a stored snapshot.
 Retrieves a snapshot from the store and restores the original binary.
 Supports restore by ID or from the latest available snapshot.
 
+When restoring, the command:
+    1. Locates the requested snapshot in the store
+    2. Stops TermService if running
+    3. Grants temporary write access to the binary
+    4. Restores the original binary from the snapshot blob
+    5. Validates the restored binary via SHA256 hash comparison
+    6. Restores original ACL and service state
+    7. Records the operation in the audit store
+
 .PARAMETER Id
 ID of the snapshot to restore.
 
@@ -31,14 +40,17 @@ PSCustomObject with properties:
     RestoredAt [string] - ISO 8601 UTC timestamp
 #>
 function Restore-RdpSnapshot {
-    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High', DefaultParameterSetName = 'Latest')]
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High', DefaultParameterSetName = 'Latest'
+    )]
     [OutputType([pscustomobject])]
     param (
         [Parameter(Mandatory, ParameterSetName = 'ById')]
-        [ValidateRange(1, [int]::MaxValue)]
-        [int]$Id,
+        [ValidateRange(1, [long]::MaxValue)]
+        [long]$Id,
 
-        [Parameter()]
+        [Parameter(Mandatory, ParameterSetName = 'Latest')]
+        [switch]$Latest,
+
         [switch]$Force
     )
 
@@ -61,46 +73,43 @@ function Restore-RdpSnapshot {
     }
 
     process {
-        if (-not ($Force -or $PSCmdlet.ShouldProcess('Target binary', 'Restore from snapshot'))) {
+        if (-not ($Force -or $PSCmdlet.ShouldProcess('termsrv.dll', 'Restore binary from snapshot'))) {
             return
         }
 
-        $snapshot = if ($PSCmdlet.ParameterSetName -eq 'ById') {
-            $records = @(Get-StoreSnapshot -Id $Id)
-
-            if ($null -eq $records -or $records.Count -eq 0) {
-                $PSCmdlet.ThrowTerminatingError(
-                    [System.Management.Automation.ErrorRecord]::new(
-                        [System.InvalidOperationException]::new("Snapshot [$Id] was not found."),
-                        'SnapshotNotFound',
-                        [System.Management.Automation.ErrorCategory]::ObjectNotFound,
-                        $Id
-                    )
-                )
-            }
-
-            $records[0]
-        } else {
-            $records = @(Get-StoreSnapshot -Latest)
-
-            if ($null -eq $records -or $records.Count -eq 0) {
-                $PSCmdlet.ThrowTerminatingError(
-                    [System.Management.Automation.ErrorRecord]::new(
-                        [System.InvalidOperationException]::new('No snapshots found in the store.'),
-                        'SnapshotNotFound',
-                        [System.Management.Automation.ErrorCategory]::ObjectNotFound,
-                        $null
-                    )
-                )
-            }
-
-            $records[0]
+        $snapshotQuery = if ($PSCmdlet.ParameterSetName -eq 'ById') {
+            @{ Id = $Id }
+        } elseif ($Latest) {
+            @{ Latest = $true }
         }
 
-        $result = Undo-Enforcement
+        $snapshotRecord = @(Get-StoreSnapshot @snapshotQuery) | Select-Object -First 1
+
+        if ($null -eq $snapshotRecord) {
+            $targetDescription = if ($PSCmdlet.ParameterSetName -eq 'ById') {
+                "Snapshot [$Id]"
+            } else {
+                'Latest snapshot'
+            }
+
+            $PSCmdlet.ThrowTerminatingError(
+                [System.Management.Automation.ErrorRecord]::new(
+                    [System.InvalidOperationException]::new(
+                        "$targetDescription was not found."
+                    ),
+                    'SnapshotNotFound',
+                    [System.Management.Automation.ErrorCategory]::ObjectNotFound,
+                    $Id
+                )
+            )
+        }
+
+        Write-Verbose -Message "Restoring snapshot ID $($snapshotRecord.id)."
+
+        $result = Undo-Enforcement -SnapshotId $snapshotRecord.id
 
         [PSCustomObject]@{
-            SnapshotId = $snapshot.id
+            SnapshotId = $snapshotRecord.id
             Hash       = $result.Hash
             RestoredAt = $result.RestoredAt
         }
