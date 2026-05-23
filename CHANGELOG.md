@@ -16,6 +16,49 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - GitHub Actions CI pipeline (lint → test → build → publish)
 - External Pester module dependency declared in manifest
 
+### Added
+- `Get-RdpSnapshot -All` — includes enforced snapshots in listing (hidden by default)
+- `Set-RdpService` — now synchronizes Windows Settings UI toggle via
+  `Win32_TerminalServiceSetting.SetAllowTSConnections` (WSMan/DCOM/Registry fallback chain)
+- `Set-RdpAccessState` (private Engine) — CIM-based Remote Desktop access configuration
+  with automatic fallback to registry for restricted environments
+- `RDPControl.EnforcementResult` — typed output for `Set-RdpSessionMode -Enabled`
+- `RDPControl.RestoreResult` — typed output for `Set-RdpSessionMode -Disabled`
+  and `Restore-RdpSnapshot`
+- `RDPControl.SessionModeInfo` — typed output for `Get-RdpSessionMode`
+- `RDPControl.SnapshotInfo` — typed output for `Get-RdpSnapshot`
+- Declarative list formatting for all typed outputs via `RDPControl.format.ps1xml`
+- Timestamps formatted as `yyyy-MM-dd HH:mm:ss UTC` across all output views
+- `Undo-Enforcement -SnapshotId` — optional parameter for targeted snapshot restore
+- `Find-BinarySignature` now returns `CurrentBytes` property — eliminates hardcoded
+  core pattern in `Set-RdpSessionMode -DryRun`
+
+### Changed
+- `Get-RdpSnapshot` — returns only pre-enforcement snapshots by default.
+  Enforced snapshots are stored internally for integrity validation and are
+  not exposed unless `-All` is specified
+- `Restore-RdpSnapshot` — only accepts pre-enforcement snapshots as valid
+  restore points. Error message updated accordingly
+- `Set-RdpSessionMode` output — `SnapshotId` renamed to `RestoreSnapshotId`
+  for semantic clarity
+- `Get-SQLiteSnapshot` — `enforced` column now returned as `[bool]` instead of `[int]`
+- `Get-SQLiteSnapshot` — each record stamped with `PSTypeName = RDPControl.SnapshotInfo`
+- `catch` blocks in `Set-RdpSessionMode`, `Invoke-Enforcement`, `Undo-Enforcement`
+  now use ErrorRecord-aware re-propagation — preserves `FullyQualifiedErrorId`,
+  category, and target object from engine layer
+
+### Fixed
+- `Initialize-RdpEnvironment -Purge` — releases SQLite file locks before
+  `Remove-Item` via `SQLiteConnection.ClearAllPools` + `GC.Collect`
+- `Write-BinaryByte` output leaking into `Invoke-Enforcement` return value —
+  suppressed with `| Out-Null`
+- `Get-SQLiteSnapshot` column list built with `-join` instead of string
+  concatenation — fixes malformed SQL when `-IncludeBlob` was used
+- `Get-BinaryVersion` returning object instead of string in `Invoke-Enforcement`
+  — fixed by accessing `.NormalizedVersion`
+- `Test-EnforcementState` — `$targetPath` moved outside `try` block; generic
+  `catch` wrapper removed to preserve original exception types
+
 ---
 
 ## [0.1.0] — 2026-05-05
