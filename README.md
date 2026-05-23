@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/RDPControl.svg" alt="RDPControl" width="120" />
+  <img src="docs/assets/RDPControl.svg" alt="RDPControl" />
 </p>
 
 # RDPControl
