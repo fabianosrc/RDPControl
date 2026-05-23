@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/RDPControl.svg" alt="RDPControl" width="120" />
+</p>
+
 # RDPControl
 
 A PowerShell module for managing Remote Desktop on Windows — port configuration,
