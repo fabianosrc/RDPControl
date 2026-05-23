@@ -1,10 +1,27 @@
 ﻿<#
 .SYNOPSIS
-Lists stored snapshots with metadata.
+Lists stored binary snapshots.
 
 .DESCRIPTION
-Retrieves snapshot records from the store. Supports filtering by ID,
-latest record, or limiting result set size.
+Returns snapshot records from the store.
+
+By default, only pre-enforcement snapshots are returned. These are the
+valid restore points that can be used with Restore-RdpSnapshot.
+
+Use -All to include enforced snapshots, which are stored internally
+for integrity validation by the watchdog and enforcement engine.
+
+.PARAMETER Id
+Returns the snapshot with the specified ID.
+
+.PARAMETER Latest
+Returns the most recent pre-enforcement snapshot.
+
+.PARAMETER All
+Returns all snapshots, including enforced snapshots.
+
+.PARAMETER Top
+Limits the number of returned records.
 
 .EXAMPLE
 PS C:\> Get-RdpSnapshot
@@ -13,21 +30,23 @@ PS C:\> Get-RdpSnapshot
 PS C:\> Get-RdpSnapshot -Latest
 
 .EXAMPLE
-PS C:\> Get-RdpSnapshot -Id 3
+PS C:\> Get-RdpSnapshot -Id 1
 
 .EXAMPLE
 PS C:\> Get-RdpSnapshot -Top 5
+
+.EXAMPLE
+PS C:\> Get-RdpSnapshot -All
 
 .INPUTS
 None
 
 .OUTPUTS
-PSCustomObject[]
+RDPControl.SnapshotInfo
 #>
-
 function Get-RdpSnapshot {
-    [CmdletBinding(DefaultParameterSetName = 'All')]
-    [OutputType([pscustomobject[]])]
+    [CmdletBinding(DefaultParameterSetName = 'Default')]
+    [OutputType('RDPControl.SnapshotInfo')]
     param (
         [Parameter(Mandatory, ParameterSetName = 'ById')]
         [ValidateRange(1, [int]::MaxValue)]
@@ -36,7 +55,10 @@ function Get-RdpSnapshot {
         [Parameter(Mandatory, ParameterSetName = 'Latest')]
         [switch]$Latest,
 
-        [Parameter(ParameterSetName = 'All')]
+        [Parameter(ParameterSetName = 'Default')]
+        [switch]$All,
+
+        [Parameter(ParameterSetName = 'Default')]
         [ValidateRange(1, 1000)]
         [int]$Top
     )
@@ -46,18 +68,22 @@ function Get-RdpSnapshot {
     }
 
     process {
-        # direct parameter passthrough (cleaner + safer contract)
         $params = @{}
+
+        # Default behavior: restore points only (enforced = false)
+        if (-not $All) {
+            $params.Enforced = $false
+        }
 
         if ($PSCmdlet.ParameterSetName -eq 'ById') {
             $params.Id = $Id
         }
 
-        if ($PSCmdlet.ParameterSetName -eq 'Latest') {
+        if ($Latest) {
             $params.Latest = $true
         }
 
-        if ($PSCmdlet.ParameterSetName -eq 'All' -and $PSBoundParameters.ContainsKey('Top')) {
+        if ($PSBoundParameters.ContainsKey('Top')) {
             $params.Top = $Top
         }
 

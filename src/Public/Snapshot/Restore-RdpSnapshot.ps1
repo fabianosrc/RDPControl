@@ -3,46 +3,43 @@
 Restores the target binary from a stored snapshot.
 
 .DESCRIPTION
-Retrieves a snapshot from the store and restores the original binary.
-Supports restore by ID or from the latest available snapshot.
+Retrieves a pre-enforcement snapshot from the store and restores the
+original binary. Only pre-enforcement snapshots are valid restore points.
 
 When restoring, the command:
     1. Locates the requested snapshot in the store
-    2. Stops TermService if running
-    3. Grants temporary write access to the binary
-    4. Restores the original binary from the snapshot blob
-    5. Validates the restored binary via SHA256 hash comparison
-    6. Restores original ACL and service state
-    7. Records the operation in the audit store
+    2. Validates the snapshot is a pre-enforcement restore point
+    3. Stops TermService if running
+    4. Grants temporary write access to the binary
+    5. Restores the original binary from the snapshot blob
+    6. Validates the restored binary via SHA256 hash comparison
+    7. Restores original ACL and service state
+    8. Records the operation in the audit store
 
 .PARAMETER Id
 ID of the snapshot to restore.
 
 .PARAMETER Latest
-Restores from the most recent snapshot.
+Restores from the most recent pre-enforcement snapshot.
 
 .PARAMETER Force
 Bypasses the confirmation prompt.
 
 .EXAMPLE
-PS C:\> Restore-RdpSnapshot -Id 3
+PS C:\> Restore-RdpSnapshot -Latest
 
 .EXAMPLE
-PS C:\> Restore-RdpSnapshot -Latest -Force
+PS C:\> Restore-RdpSnapshot -Id 1 -Force
 
 .INPUTS
 None
 
 .OUTPUTS
-PSCustomObject with properties:
-    SnapshotId [long]   - ID of the restored snapshot
-    Hash       [string] - SHA256 of the restored binary
-    RestoredAt [string] - ISO 8601 UTC timestamp
+RDPControl.RestoreResult
 #>
 function Restore-RdpSnapshot {
-    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High', DefaultParameterSetName = 'Latest'
-    )]
-    [OutputType([pscustomobject])]
+    [CmdletBinding( SupportsShouldProcess, ConfirmImpact = 'High', DefaultParameterSetName = 'Latest')]
+    [OutputType('RDPControl.RestoreResult')]
     param (
         [Parameter(Mandatory, ParameterSetName = 'ById')]
         [ValidateRange(1, [long]::MaxValue)]
@@ -77,10 +74,17 @@ function Restore-RdpSnapshot {
             return
         }
 
+        # Only pre-enforcement snapshots are valid restore points
         $snapshotQuery = if ($PSCmdlet.ParameterSetName -eq 'ById') {
-            @{ Id = $Id }
+            @{
+                Id       = $Id
+                Enforced = $false
+            }
         } elseif ($Latest) {
-            @{ Latest = $true }
+            @{
+                Latest   = $true
+                Enforced = $false
+            }
         }
 
         $snapshotRecord = @(Get-StoreSnapshot @snapshotQuery) | Select-Object -First 1
@@ -95,7 +99,7 @@ function Restore-RdpSnapshot {
             $PSCmdlet.ThrowTerminatingError(
                 [System.Management.Automation.ErrorRecord]::new(
                     [System.InvalidOperationException]::new(
-                        "$targetDescription was not found."
+                        "$targetDescription was not found or is not a valid restore point."
                     ),
                     'SnapshotNotFound',
                     [System.Management.Automation.ErrorCategory]::ObjectNotFound,
@@ -108,7 +112,7 @@ function Restore-RdpSnapshot {
 
         $result = Undo-Enforcement -SnapshotId $snapshotRecord.id
 
-        return [pscustomobject]@{
+        return [PSCustomObject]@{
             PSTypeName = 'RDPControl.RestoreResult'
             SnapshotId = $snapshotRecord.id
             Hash       = $result.Hash

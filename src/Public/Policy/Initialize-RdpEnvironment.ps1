@@ -110,6 +110,11 @@ function Initialize-RdpEnvironment {
             }
 
             if (Test-Path -LiteralPath $basePath -PathType Container) {
+                # Force SQLite to release pooled connections and file handles
+                [System.Data.SQLite.SQLiteConnection]::ClearAllPools()
+                [GC]::Collect()
+                [GC]::WaitForPendingFinalizers()
+
                 Remove-Item -LiteralPath $basePath -Recurse -Force -ErrorAction Stop
                 Write-Verbose -Message "Environment purged: $basePath"
             }

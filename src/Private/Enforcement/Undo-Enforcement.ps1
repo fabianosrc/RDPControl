@@ -135,8 +135,8 @@ function Undo-Enforcement {
                 }
             } else {
                 @{
-                    Enforced   = $false
-                    Latest     = $true
+                    Enforced    = $false
+                    Latest      = $true
                     IncludeBlob = $true
                 }
             }
@@ -232,9 +232,7 @@ function Undo-Enforcement {
                         Restore-FileAcl -Path $targetPath -Acl $originalAcl
                     }
                 } catch {
-                    $restoreFailures.Add(
-                        "ACL restoration failed: $($_.Exception.Message)"
-                    )
+                    $restoreFailures.Add("ACL restoration failed: $($_.Exception.Message)")
                 }
 
                 try {
@@ -242,9 +240,7 @@ function Undo-Enforcement {
                         Start-TermService
                     }
                 } catch {
-                    $restoreFailures.Add(
-                        "Service restoration failed: $($_.Exception.Message)"
-                    )
+                    $restoreFailures.Add("Service restoration failed: $($_.Exception.Message)")
                 }
 
                 if ($restoreFailures.Count -gt 0) {

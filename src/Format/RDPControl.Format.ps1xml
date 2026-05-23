@@ -91,7 +91,7 @@
                                 <PropertyName>State</PropertyName>
                             </ListItem>
                             <ListItem>
-                                <Label>Snapshot ID</Label>
+                                <Label>Restore Snapshot ID</Label>
                                 <PropertyName>SnapshotId</PropertyName>
                             </ListItem>
                             <ListItem>
@@ -127,10 +127,6 @@
                 <ListEntries>
                     <ListEntry>
                         <ListItems>
-                            <ListItem>
-                                <Label>State</Label>
-                                <ScriptBlock>'Disabled'</ScriptBlock>
-                            </ListItem>
                             <ListItem>
                                 <Label>Snapshot ID</Label>
                                 <PropertyName>SnapshotId</PropertyName>
@@ -183,6 +179,53 @@
                                         [datetime]::Parse($_.CheckedAt).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss') + ' UTC'
                                     }
                                 </ScriptBlock>
+                            </ListItem>
+                        </ListItems>
+                    </ListEntry>
+                </ListEntries>
+            </ListControl>
+        </View>
+        <!-- ============================================================ -->
+        <!-- RDPControl.SnapshotInfo                                      -->
+        <!-- ============================================================ -->
+        <View>
+            <Name>RDPControl.SnapshotInfo</Name>
+            <ViewSelectedBy>
+                <TypeName>RDPControl.SnapshotInfo</TypeName>
+            </ViewSelectedBy>
+            <ListControl>
+                <ListEntries>
+                    <ListEntry>
+                        <ListItems>
+                            <ListItem>
+                                <Label>ID</Label>
+                                <PropertyName>id</PropertyName>
+                            </ListItem>
+                            <ListItem>
+                                <Label>Status</Label>
+                                <ScriptBlock>
+                                    if ($_.enforced) { 'Enforced' } else { 'Restore Point' }
+                                </ScriptBlock>
+                            </ListItem>
+                            <ListItem>
+                                <Label>Created At</Label>
+                                <ScriptBlock>
+                                    if ($_.created_at) {
+                                        [datetime]::Parse($_.created_at).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss') + ' UTC'
+                                    }
+                                </ScriptBlock>
+                            </ListItem>
+                            <ListItem>
+                                <Label>Binary Version</Label>
+                                <PropertyName>binary_version</PropertyName>
+                            </ListItem>
+                            <ListItem>
+                                <Label>OS Build</Label>
+                                <PropertyName>os_build</PropertyName>
+                            </ListItem>
+                            <ListItem>
+                                <Label>Hash</Label>
+                                <PropertyName>sha256</PropertyName>
                             </ListItem>
                         </ListItems>
                     </ListEntry>

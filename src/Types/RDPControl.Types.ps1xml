@@ -102,4 +102,26 @@
             </MemberSet>
         </Members>
     </Type>
+    <!-- ============================================================ -->
+    <!-- RDPControl.SnapshotInfo                                      -->
+    <!-- ============================================================ -->
+    <Type>
+        <Name>RDPControl.SnapshotInfo</Name>
+        <Members>
+            <MemberSet>
+                <Name>PSStandardMembers</Name>
+                <Members>
+                    <PropertySet>
+                        <Name>DefaultDisplayPropertySet</Name>
+                        <ReferencedProperties>
+                            <Name>id</Name>
+                            <Name>binary_version</Name>
+                            <Name>sha256</Name>
+                            <Name>created_at</Name>
+                        </ReferencedProperties>
+                    </PropertySet>
+                </Members>
+            </MemberSet>
+        </Members>
+    </Type>
 </Types>

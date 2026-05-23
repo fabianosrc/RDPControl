@@ -38,7 +38,6 @@ New-StoreSnapshot -BinaryPath "C:\example.dll" `
 .OUTPUTS
 System.Int64
 #>
-
 function New-StoreSnapshot {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
     [OutputType([long])]
