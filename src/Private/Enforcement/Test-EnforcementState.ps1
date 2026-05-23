@@ -42,7 +42,7 @@ function Test-EnforcementState {
             )
         }
 
-        $enforcedSnapshot = @(Get-StoreSnapshot -Enforced $true -Latest)[0]
+        $enforcedSnapshot = @(Get-StoreSnapshot -Enforced $true -Latest) | Select-Object -First 1
 
         if ($null -eq $enforcedSnapshot) {
             Write-Verbose -Message 'No enforced snapshot is available.'
