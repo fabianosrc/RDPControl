@@ -260,25 +260,39 @@ Snapshots capture a SHA-256 hash and the raw bytes of `termsrv.dll`. They are
 stored in the local SQLite database and can be used to restore the system binary
 to a known-good state.
 
+By default, `Get-RdpSnapshot` only returns **restore points** (pre-enforcement
+snapshots). Enforced snapshots are stored internally for integrity validation
+and are not shown unless `-All` is specified.
+
 | Cmdlet | Description |
 |---|---|
 | `New-RdpSnapshot` | Captures a snapshot of the current system binary. |
-| `Get-RdpSnapshot` | Queries stored snapshots. |
+| `Get-RdpSnapshot` | Lists restore point snapshots. Use `-All` to include enforced snapshots. |
 | `Remove-RdpSnapshot` | Deletes a snapshot by ID. |
-| `Restore-RdpSnapshot` | Restores the system binary from a stored snapshot. |
+| `Restore-RdpSnapshot` | Restores the system binary from a restore point snapshot. |
 
 ```powershell
+# Capture the current binary
 New-RdpSnapshot
 
+# List restore points (default)
 Get-RdpSnapshot
 
-Restore-RdpSnapshot -Id 1
+# List all snapshots including enforced
+Get-RdpSnapshot -All
 
+# Restore from the most recent restore point
 Restore-RdpSnapshot -Latest -Force
+
+# Restore from a specific snapshot
+Restore-RdpSnapshot -Id 1
 ```
 
 > **Note:** `New-RdpSnapshot` detects duplicate hashes and will not create a
 > second snapshot if the binary has not changed since the last capture.
+>
+> `Restore-RdpSnapshot -Latest` always targets the most recent restore point,
+> never an enforced snapshot.
 
 ---
 
