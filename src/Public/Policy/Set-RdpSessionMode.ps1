@@ -191,6 +191,7 @@ function Set-RdpSessionMode {
             }
 
             return [PSCustomObject]@{
+                PSTypeName  = 'RDPControl.EnforcementResult'
                 State       = 'Enabled'
                 SnapshotId  = $result.SnapshotId
                 WriteOffset = $result.WriteOffset
@@ -223,6 +224,7 @@ function Set-RdpSessionMode {
             }
 
             return [PSCustomObject]@{
+                PSTypeName = 'RDPControl.RestoreResult'
                 State      = 'Disabled'
                 SnapshotId = $result.SnapshotId
                 Hash       = $result.Hash

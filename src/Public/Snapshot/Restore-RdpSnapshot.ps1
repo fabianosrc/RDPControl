@@ -108,7 +108,8 @@ function Restore-RdpSnapshot {
 
         $result = Undo-Enforcement -SnapshotId $snapshotRecord.id
 
-        [PSCustomObject]@{
+        return [pscustomobject]@{
+            PSTypeName = 'RDPControl.RestoreResult'
             SnapshotId = $snapshotRecord.id
             Hash       = $result.Hash
             RestoredAt = $result.RestoredAt

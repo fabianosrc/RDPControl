@@ -54,11 +54,14 @@ function Get-RdpSessionMode {
             )
         }
 
-        [PSCustomObject]@{
+        $result = [PSCustomObject]@{
             Mode      = if ($isEnforced) { 'Concurrent' } else { 'Standard' }
             Enforced  = $isEnforced
             Hash      = $hash
             CheckedAt = (Get-Date).ToUniversalTime().ToString('o')
         }
+
+        $result.PSObject.TypeNames.Insert(0, 'RDPControl.SessionModeInfo')
+        return $result
     }
 }

@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Types>
+    <!-- ============================================================ -->
+    <!-- RDPControl.DryRunResult                                      -->
+    <!-- ============================================================ -->
     <Type>
         <Name>RDPControl.DryRunResult</Name>
         <Members>
@@ -33,6 +36,70 @@
                 <Name>RequiresSnapshot</Name>
                 <GetScriptBlock>$this.SnapshotAction -like 'Create*'</GetScriptBlock>
             </ScriptProperty>
+        </Members>
+    </Type>
+    <!-- ============================================================ -->
+    <!-- RDPControl.EnforcementResult                                 -->
+    <!-- ============================================================ -->
+    <Type>
+        <Name>RDPControl.EnforcementResult</Name>
+        <Members>
+            <MemberSet>
+                <Name>PSStandardMembers</Name>
+                <Members>
+                    <PropertySet>
+                        <Name>DefaultDisplayPropertySet</Name>
+                        <ReferencedProperties>
+                            <Name>State</Name>
+                            <Name>Hash</Name>
+                            <Name>EnforcedAt</Name>
+                        </ReferencedProperties>
+                    </PropertySet>
+                </Members>
+            </MemberSet>
+        </Members>
+    </Type>
+    <!-- ============================================================ -->
+    <!-- RDPControl.RestoreResult                                     -->
+    <!-- ============================================================ -->
+    <Type>
+        <Name>RDPControl.RestoreResult</Name>
+        <Members>
+            <MemberSet>
+                <Name>PSStandardMembers</Name>
+                <Members>
+                    <PropertySet>
+                        <Name>DefaultDisplayPropertySet</Name>
+                        <ReferencedProperties>
+                            <Name>SnapshotId</Name>
+                            <Name>Hash</Name>
+                            <Name>RestoredAt</Name>
+                        </ReferencedProperties>
+                    </PropertySet>
+                </Members>
+            </MemberSet>
+        </Members>
+    </Type>
+    <!-- ============================================================ -->
+    <!-- RDPControl.SessionModeInfo                                   -->
+    <!-- ============================================================ -->
+    <Type>
+        <Name>RDPControl.SessionModeInfo</Name>
+        <Members>
+            <MemberSet>
+                <Name>PSStandardMembers</Name>
+                <Members>
+                    <PropertySet>
+                        <Name>DefaultDisplayPropertySet</Name>
+                        <ReferencedProperties>
+                            <Name>Mode</Name>
+                            <Name>Enforced</Name>
+                            <Name>Hash</Name>
+                            <Name>CheckedAt</Name>
+                        </ReferencedProperties>
+                    </PropertySet>
+                </Members>
+            </MemberSet>
         </Members>
     </Type>
 </Types>

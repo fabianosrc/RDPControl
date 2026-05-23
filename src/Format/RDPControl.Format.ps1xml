@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Configuration>
     <ViewDefinitions>
+        <!-- ============================================================ -->
+        <!-- RDPControl.DryRunResult                                      -->
+        <!-- ============================================================ -->
         <View>
             <Name>RDPControl.DryRunResult</Name>
             <ViewSelectedBy>
@@ -65,6 +68,121 @@
                             <ListItem>
                                 <Label>Requires Snapshot</Label>
                                 <PropertyName>RequiresSnapshot</PropertyName>
+                            </ListItem>
+                        </ListItems>
+                    </ListEntry>
+                </ListEntries>
+            </ListControl>
+        </View>
+        <!-- ============================================================ -->
+        <!-- RDPControl.EnforcementResult                                 -->
+        <!-- ============================================================ -->
+        <View>
+            <Name>RDPControl.EnforcementResult</Name>
+            <ViewSelectedBy>
+                <TypeName>RDPControl.EnforcementResult</TypeName>
+            </ViewSelectedBy>
+            <ListControl>
+                <ListEntries>
+                    <ListEntry>
+                        <ListItems>
+                            <ListItem>
+                                <Label>State</Label>
+                                <PropertyName>State</PropertyName>
+                            </ListItem>
+                            <ListItem>
+                                <Label>Snapshot ID</Label>
+                                <PropertyName>SnapshotId</PropertyName>
+                            </ListItem>
+                            <ListItem>
+                                <Label>Write Offset</Label>
+                                <PropertyName>WriteOffset</PropertyName>
+                            </ListItem>
+                            <ListItem>
+                                <Label>Hash</Label>
+                                <PropertyName>Hash</PropertyName>
+                            </ListItem>
+                            <ListItem>
+                                <Label>Enforced At</Label>
+                                <ScriptBlock>
+                                    if ($_.EnforcedAt) {
+                                        [datetime]::Parse($_.EnforcedAt).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss') + ' UTC'
+                                    }
+                                </ScriptBlock>
+                            </ListItem>
+                        </ListItems>
+                    </ListEntry>
+                </ListEntries>
+            </ListControl>
+        </View>
+        <!-- ============================================================ -->
+        <!-- RDPControl.RestoreResult                                     -->
+        <!-- ============================================================ -->
+        <View>
+            <Name>RDPControl.RestoreResult</Name>
+            <ViewSelectedBy>
+                <TypeName>RDPControl.RestoreResult</TypeName>
+            </ViewSelectedBy>
+            <ListControl>
+                <ListEntries>
+                    <ListEntry>
+                        <ListItems>
+                            <ListItem>
+                                <Label>State</Label>
+                                <ScriptBlock>'Disabled'</ScriptBlock>
+                            </ListItem>
+                            <ListItem>
+                                <Label>Snapshot ID</Label>
+                                <PropertyName>SnapshotId</PropertyName>
+                            </ListItem>
+                            <ListItem>
+                                <Label>Hash</Label>
+                                <PropertyName>Hash</PropertyName>
+                            </ListItem>
+                            <ListItem>
+                                <Label>Restored At</Label>
+                                <ScriptBlock>
+                                    if ($_.RestoredAt) {
+                                        [datetime]::Parse($_.RestoredAt).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss') + ' UTC'
+                                    }
+                                </ScriptBlock>
+                            </ListItem>
+                        </ListItems>
+                    </ListEntry>
+                </ListEntries>
+            </ListControl>
+        </View>
+        <!-- ============================================================ -->
+        <!-- RDPControl.SessionModeInfo                                   -->
+        <!-- ============================================================ -->
+        <View>
+            <Name>RDPControl.SessionModeInfo</Name>
+            <ViewSelectedBy>
+                <TypeName>RDPControl.SessionModeInfo</TypeName>
+            </ViewSelectedBy>
+            <ListControl>
+                <ListEntries>
+                    <ListEntry>
+                        <ListItems>
+                            <ListItem>
+                                <Label>Mode</Label>
+                                <PropertyName>Mode</PropertyName>
+                            </ListItem>
+                            <ListItem>
+                                <Label>Enforced</Label>
+                                <PropertyName>Enforced</PropertyName>
+                            </ListItem>
+                            <ListItem>
+                                <Label>Hash</Label>
+                                <PropertyName>Hash</PropertyName>
+                            </ListItem>
+                            <ListItem>
+                                <Label>Checked At</Label>
+                                <ScriptBlock>
+                                    if ($_.CheckedAt) {
+                                        [datetime]::Parse($_.CheckedAt).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss') + ' UTC'
+                                    }
+                                </ScriptBlock>
                             </ListItem>
                         </ListItems>
                     </ListEntry>
