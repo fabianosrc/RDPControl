@@ -204,7 +204,7 @@ function Undo-Enforcement {
 
                 for ($attempt = 1; $attempt -le $maxRetries; $attempt++) {
                     try {
-                        [System.IO.File]::WriteAllBytes($targetPath, $blob)
+                        Write-BinaryContent -Path $targetPath -Bytes $blob
                         break
                     } catch {
                         if ($attempt -eq $maxRetries) {
@@ -299,10 +299,11 @@ function Undo-Enforcement {
             Write-Verbose -Message 'Enforcement reverted successfully.'
 
             [PSCustomObject]@{
+                PSTypeName    = 'RDPControl.EnforcementUndoResult'
                 Success       = $true
                 SnapshotId    = $snapshot.id
                 Hash          = $restoredHash
-                RestoredAt = (Get-Date).ToUniversalTime().ToString('o')
+                RestoredAt    = (Get-Date).ToUniversalTime().ToString('o')
             }
         } catch {
             if ($_ -is [System.Management.Automation.ErrorRecord]) {

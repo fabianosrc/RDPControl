@@ -56,6 +56,12 @@ function Test-EnforcementState {
 
         $currentHash = (Get-BinaryHash -Bytes $assembly.Bytes).Trim().ToLowerInvariant()
 
+        if ([string]::IsNullOrWhiteSpace($enforcedSnapshot.sha256)) {
+            Write-Verbose -Message 'Enforced snapshot has no valid hash.'
+            $false
+            return
+        }
+
         $snapshotHash = ($enforcedSnapshot.sha256).Trim().ToLowerInvariant()
 
         $matchesEnforcedSnapshot = $currentHash -eq $snapshotHash
