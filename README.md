@@ -90,19 +90,16 @@ Get-RdpEnvironment
 Get-RdpPort
 Get-RdpService
 
-# 3. Change the RDP port
-Set-RdpPort -Port 3390
-
-# 4. Take a snapshot of the current system binary
+# 3. Take a snapshot of the current system binary
 New-RdpSnapshot
 
-# 5. Preview what enabling multi-session would do (no changes applied)
+# 4. Preview what enabling multi-session would do (no changes applied)
 Set-RdpSessionMode -Enabled -DryRun
 
-# 6. Enable multi-session mode
+# 5. Enable multi-session mode
 Set-RdpSessionMode -Enabled
 
-# 7. Enable the self-healing watchdog
+# 6. Enable the self-healing watchdog
 Start-RdpWatchdog
 ```
 
