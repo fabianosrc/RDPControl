@@ -3,56 +3,47 @@
 Writes a complete byte array to a binary file, replacing its entire content.
 
 .DESCRIPTION
-Replaces the full content of a binary file using a single atomic write
-operation via System.IO.File.WriteAllBytes.
+Resolves the target path, validates that it refers to a file (not a directory),
+validates the byte array, and writes the content using WriteAllBytes.
 
-This function is intended for full-file restoration scenarios where the
-entire binary must be replaced from a stored snapshot blob.
-
-For partial in-place writes at a specific offset, use Write-BinaryByte.
+This function is intended for internal engine use only.
 
 .PARAMETER Path
 Full path to the target binary file.
 
 .PARAMETER Bytes
-Complete byte array to write. Replaces the entire file content.
+Byte array to write. Must not be null or empty.
 
 .EXAMPLE
-PS C:\> Write-BinaryContent -Path '.\termsrv.dll' -Bytes $snapshotBlob
+PS C:\> Write-BinaryContent -Path 'C:\Path\To\Example.dll' -Bytes $bytes
 
 .INPUTS
 None
 
 .OUTPUTS
 None
-
-.NOTES
-This function performs full binary replacement only.
-It does not support partial writes, offset-based operations,
-or file stream locking.
 #>
 function Write-BinaryContent {
     [CmdletBinding()]
     [OutputType([void])]
-    param(
+    param (
         [Parameter(Mandatory)]
         [ValidateNotNullOrEmpty()]
         [string]$Path,
 
         [Parameter(Mandatory)]
-        [ValidateNotNullOrEmpty()]
         [byte[]]$Bytes
     )
 
     process {
         try {
-            if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+            # -----------------------------
+            # Check existence first
+            # -----------------------------
+            if (-not (Test-Path -LiteralPath $Path)) {
                 $PSCmdlet.ThrowTerminatingError(
                     [System.Management.Automation.ErrorRecord]::new(
-                        [System.IO.FileNotFoundException]::new(
-                            'File not found.',
-                            $Path
-                        ),
+                        [System.Exception]::new("File not found: $Path"),
                         'BinaryFileNotFound',
                         [System.Management.Automation.ErrorCategory]::ObjectNotFound,
                         $Path
@@ -60,14 +51,66 @@ function Write-BinaryContent {
                 )
             }
 
-            $resolvedPath = (Resolve-Path -LiteralPath $Path).ProviderPath
+            # -----------------------------
+            # Resolve path first (canonical)
+            # -----------------------------
+            $resolvedPath = Resolve-Path -LiteralPath $Path
+            $fullPath     = $resolvedPath.ProviderPath
 
-            Write-Verbose -Message ("Writing {0} bytes to [{1}]." -f $Bytes.Length, $resolvedPath)
+            # -----------------------------
+            # Directory validation
+            # -----------------------------
+            if (Test-Path -LiteralPath $fullPath -PathType Container) {
+                $PSCmdlet.ThrowTerminatingError(
+                    [System.Management.Automation.ErrorRecord]::new(
+                        [System.Exception]::new("Path is a directory: $fullPath"),
+                        'BinaryPathIsDirectory',
+                        [System.Management.Automation.ErrorCategory]::InvalidArgument,
+                        $fullPath
+                    )
+                )
+            }
 
-            [System.IO.File]::WriteAllBytes($resolvedPath, $Bytes)
+            # -----------------------------
+            # Bytes validation (explicit, predictable)
+            # -----------------------------
+            if ($null -eq $Bytes -or $Bytes.Count -eq 0) {
+                $PSCmdlet.ThrowTerminatingError(
+                    [System.Management.Automation.ErrorRecord]::new(
+                        [System.Exception]::new('Bytes cannot be null or empty'),
+                        'BinaryBytesEmpty',
+                        [System.Management.Automation.ErrorCategory]::InvalidData,
+                        $fullPath
+                    )
+                )
+            }
+
+            # -----------------------------
+            # Write operation
+            # -----------------------------
+            Write-Verbose -Message ("Writing {0} bytes to [{1}]." -f $Bytes.Count, $fullPath)
+
+            [System.IO.File]::WriteAllBytes($fullPath, $Bytes)
 
             Write-Verbose -Message 'Binary content written successfully.'
         } catch {
+            # -----------------------------
+            # File Not Found (TESTABLE)
+            # -----------------------------
+            if ($_.FullyQualifiedErrorId -eq 'PathNotFound') {
+                $PSCmdlet.ThrowTerminatingError(
+                    [System.Management.Automation.ErrorRecord]::new(
+                        [System.Exception]::new("File not found: $Path"),
+                        'BinaryFileNotFound',
+                        [System.Management.Automation.ErrorCategory]::ObjectNotFound,
+                        $Path
+                    )
+                )
+            }
+
+            # -----------------------------
+            # Unexpected IO / system failures
+            # -----------------------------
             $PSCmdlet.ThrowTerminatingError(
                 [System.Management.Automation.ErrorRecord]::new(
                     $_.Exception,
