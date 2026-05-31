@@ -167,19 +167,28 @@ Set-RdpSessionMode -Enabled -DryRun
 
 ```
 DryRun            : True (no changes applied)
+Binary Path       : C:\Windows\System32\termsrv.dll
+Binary Version    : 10.0.19041.6926
+Hash (SHA-256)    : 65cf3dfae9cd0469cfdb0640cfa73f2e1d02a08ccf5d7e5046742cdb8fa44736
 Current State     : Standard
 Target State      : Concurrent
-Binary Path       : C:\WINDOWS\System32\termsrv.dll
-Hash              : d6c1f5638a0f11de072e8b03c6328555a3f1d474c198487d5a2070b1e43f4627
-Snapshot Action   : Create new snapshot
 Signature Found   : True
-Signature Offset  : 0x0009A185
-Write Offset      : 0x0009A17F
-Branch Type       : jne
-Current Bytes     : 39 81 3C 06 00 00 75 16 48 8D 15 14
-Replacement Bytes : B8 00 01 00 00 89 81 38 06 00 00 90 EB
 Policy Applicable : True
+Strategy          : CoreReplacement
+Detection Mode    : Single-pass signature
+Confidence        : Standard
+Signature Offset  : 0x0001E815
+Write Offset      : 0x0001E815
+Branch Type       : jz
+Current Bytes     : 39 81 3C 06 00 00 0F 84 97 49 01 00
+Enforcement Count : 1
+Snapshot Action   : Create new snapshot
 Requires Snapshot : True
+Validation Status : Passed
+Enforcements      : [0] 0x0001E815  B8 00 01 00 00...  CoreReplacement
+OS Name           : Microsoft Windows 10 Pro
+OS Build          : 19045
+OS Revision       : 7291
 ```
 
 ```powershell
