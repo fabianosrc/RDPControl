@@ -119,6 +119,12 @@ function Set-RdpSessionMode {
             Write-Verbose -Message '[DryRun] Computing binary hash.'
             $hash = Get-BinaryHash -Bytes $assembly.Bytes
 
+            Write-Verbose -Message '[DryRun] Reading binary metadata.'
+            $binVersion = (Get-BinaryVersion -Path $targetPath).FileVersion
+            $osInfo     = Get-CimInstance -ClassName Win32_OperatingSystem
+            $osVersion  = $osInfo.Caption
+            $osBuild    = $osInfo.BuildNumber
+
             Write-Verbose -Message '[DryRun] Locating signature.'
             $signature = Find-BinarySignature -Bytes $assembly.Bytes
 
@@ -128,7 +134,7 @@ function Set-RdpSessionMode {
                 'Standard'
             }
 
-            $targetState  = if ($Enabled) {
+            $targetState = if ($Enabled) {
                 'Concurrent'
             } else {
                 'Standard'
@@ -136,32 +142,63 @@ function Set-RdpSessionMode {
 
             $existingSnapshot = @(Get-StoreSnapshot -Sha256 $hash)
 
-            $snapshotAction   = if ($existingSnapshot.Count -gt 0) {
+            $snapshotAction = if ($existingSnapshot.Count -gt 0) {
                 "Reuse existing snapshot (ID: $($existingSnapshot[0].id))"
             } else {
                 'Create new snapshot'
             }
 
-            # CurrentBytes comes directly from Find-BinarySignature -
-            # no internal knowledge of the core pattern required here
-            $currentBytesHex = if ($signature.Found) {
+            $currentBytesHex = if ($signature.Found -and $null -ne $signature.CurrentBytes) {
                 [string]::Join(' ', ($signature.CurrentBytes | ForEach-Object { $_.ToString('X2') }))
             }
 
-            $result = [PSCustomObject]@{
-                CurrentState    = $currentState
-                TargetState     = $targetState
-                BinaryPath      = $targetPath
-                Hash            = $hash
-                SnapshotAction  = $snapshotAction
-                SignatureFound  = $signature.Found
-                SignatureOffset = $signature.SignatureOffset
-                WriteOffset     = $signature.WriteOffset
-                BranchType      = $signature.BranchType
-                CurrentBytes    = $currentBytesHex
-                ReplacementHex  = $signature.ReplacementHex
+            $detectionMode = switch ($signature.Strategy) {
+                'CoreReplacement'              { 'Single-pass signature' }
+                'SharedDenyPathNeutralisation' { 'Multi-pass convergence + CFG' }
+                default                        { $signature.Strategy }
             }
 
+            $confidence = if ($signature.EnforcementCount -ge 4) { 'High' } else { 'Standard' }
+
+            $enforcementsFormatted = if ($signature.Found -and $signature.EnforcementCount -gt 0) {
+                $enforcements = $signature.Enforcements
+                $lines = for ($j = 0; $j -lt $enforcements.Count; $j++) {
+                    $e   = $enforcements[$j]
+                    $hex = $e.ReplacementHex
+                    if ($hex.Length -gt 17) { $hex = $hex.Substring(0, 14) + '...' }
+                    '[{0}] {1}  {2,-17}  {3}' -f $j, $e.OffsetHex, $hex, $e.Strategy
+                }
+                $lines -join "`n"
+            } else {
+                'None'
+            }
+
+            $outputFields = [ordered]@{
+                DryRun             = 'True (no changes applied)'
+                BinaryPath         = $targetPath
+                BinaryVersion      = $binVersion
+                Hash               = $hash
+                CurrentState       = $currentState
+                TargetState        = $targetState
+                SignatureFound     = $signature.Found
+                PolicyApplicable   = ($signature.Found -and $signature.EnforcementCount -gt 0)
+                Strategy           = $signature.Strategy
+                DetectionMode      = $detectionMode
+                Confidence         = $confidence
+                SignatureOffset    = $signature.SignatureOffset
+                WriteOffset        = $signature.WriteOffset
+                BranchType         = $signature.BranchType
+                CurrentBytes       = $currentBytesHex
+                EnforcementCount   = $signature.EnforcementCount
+                SnapshotAction     = $snapshotAction
+                RequiresSnapshot   = ($existingSnapshot.Count -eq 0)
+                ValidationStatus   = 'Passed'
+                Enforcements       = $enforcementsFormatted
+                OsName             = $osVersion
+                OsBuild            = $osBuild
+            }
+
+            $result = New-Object -TypeName PSObject -Property $outputFields
             $result.PSObject.TypeNames.Insert(0, 'RDPControl.DryRunResult')
 
             return $result

@@ -177,10 +177,16 @@ function Invoke-Enforcement {
             }
 
             Write-Verbose -Message (
-                "Signature located successfully. " +
-                "Offset=$($signature.WriteOffset); " +
-                "BranchType=$($signature.BranchType)"
+                "Enforcement strategy resolved successfully. " +
+                "Strategy=$($signature.Strategy); " +
+                "EnforcementCount=$($signature.EnforcementCount)"
             )
+
+            foreach ($enforcement in $signature.Enforcements) {
+                Write-Verbose -Message (
+                    "Enforcement: Offset=$($enforcement.OffsetHex); Strategy=$($enforcement.Strategy)"
+                )
+            }
 
             # -----------------------------------------------------------------
             # Service and ACL state capture
@@ -206,31 +212,29 @@ function Invoke-Enforcement {
                 $maxRetries = 3
                 $retryDelay = 2
 
-                for ($attempt = 1; $attempt -le $maxRetries; $attempt++) {
-                    try {
-                        $writeParams = @{
-                            Path   = $targetPath
-                            Offset = $signature.WriteIndex
-                            Bytes  = $signature.ReplacementBytes
+                foreach ($enforcement in $signature.Enforcements) {
+                    for ($attempt = 1; $attempt -le $maxRetries; $attempt++) {
+                        try {
+                            $writeParams = @{
+                                Path   = $targetPath
+                                Offset = $enforcement.Offset
+                                Bytes  = $enforcement.ReplacementBytes
+                            }
+
+                            Write-BinaryByte @writeParams | Out-Null
+                            break
+                        } catch {
+                            if ($attempt -eq $maxRetries) { throw }
+                            Write-Verbose -Message (
+                                "Binary handle still locked. " +
+                                "Retry $attempt/$maxRetries in ${retryDelay}s."
+                            )
+                            Start-Sleep -Seconds $retryDelay
                         }
-
-                        Write-BinaryByte @writeParams | Out-Null
-                        break
-                    } catch {
-                        if ($attempt -eq $maxRetries) {
-                            throw
-                        }
-
-                        Write-Verbose -Message (
-                            "Binary handle still locked. " +
-                            "Retry $attempt/$maxRetries in ${retryDelay}s."
-                        )
-
-                        Start-Sleep -Seconds $retryDelay
                     }
-                }
 
-                Write-Verbose -Message "Replacement bytes written successfully at offset $($signature.WriteOffset)."
+                    Write-Verbose -Message "Enforcement written successfully at $($enforcement.OffsetHex)."
+                }
             } catch {
                 $writeException = $_
                 throw
@@ -277,20 +281,39 @@ function Invoke-Enforcement {
             $enforcedHash     = Get-BinaryHash -Bytes $enforcedAssembly.Bytes
             $postSignature    = Find-BinarySignature -Bytes $enforcedAssembly.Bytes
 
-            if ($postSignature.Found) {
-                $PSCmdlet.ThrowTerminatingError(
-                    [System.Management.Automation.ErrorRecord]::new(
-                        [System.InvalidOperationException]::new(
-                            'Post-enforcement validation failed. Original signature remains present.'
-                        ),
-                        'ValidationFailed',
-                        [System.Management.Automation.ErrorCategory]::InvalidResult,
-                        $targetPath
+            if ($signature.Strategy -eq 'SharedDenyPathNeutralisation') {
+                # For convergence strategy: success means the scanner can no longer
+                # find active converging branches. Finding the anchor with fewer
+                # branches (or none) is expected - NOPs destroyed the deny paths.
+                if ($null -ne $postSignature -and $postSignature.Found -and
+                    $postSignature.Strategy -eq 'SharedDenyPathNeutralisation') {
+                    $PSCmdlet.ThrowTerminatingError(
+                        [System.Management.Automation.ErrorRecord]::new(
+                            [System.InvalidOperationException]::new(
+                                'Post-enforcement validation failed. Shared deny-path branches are still active.'
+                            ),
+                            'ValidationFailed',
+                            [System.Management.Automation.ErrorCategory]::InvalidResult,
+                            $targetPath
+                        )
                     )
-                )
+                }
+                Write-Verbose -Message 'Post-enforcement validation succeeded (convergence strategy).'
+            } else {
+                if ($postSignature.Found) {
+                    $PSCmdlet.ThrowTerminatingError(
+                        [System.Management.Automation.ErrorRecord]::new(
+                            [System.InvalidOperationException]::new(
+                                'Post-enforcement validation failed. Original signature remains present.'
+                            ),
+                            'ValidationFailed',
+                            [System.Management.Automation.ErrorCategory]::InvalidResult,
+                            $targetPath
+                        )
+                    )
+                }
+                Write-Verbose -Message 'Post-enforcement validation succeeded.'
             }
-
-            Write-Verbose -Message 'Post-enforcement validation succeeded.'
 
             # -----------------------------------------------------------------
             # Persist enforced snapshot and audit record
@@ -308,9 +331,11 @@ function Invoke-Enforcement {
             New-StoreSnapshot @enforcedSnapshotParams | Out-Null
 
             $auditDetails = [ordered]@{
-                WriteOffset = $signature.WriteOffset
-                BranchType  = $signature.BranchType
-                Hash        = $enforcedHash
+                Strategy         = $signature.Strategy
+                EnforcementCount = $signature.EnforcementCount
+                WriteOffset      = $signature.WriteOffset
+                BranchType       = $signature.BranchType
+                Hash             = $enforcedHash
             } | ConvertTo-Json -Compress
 
             New-StoreAuditRecord -Operation 'Invoke-Enforcement' -Details $auditDetails | Out-Null
@@ -320,7 +345,10 @@ function Invoke-Enforcement {
             return [PSCustomObject]@{
                 Success     = $true
                 SnapshotId  = $snapshotId
-                WriteOffset = $signature.WriteOffset
+                WriteOffset = (
+                    $signature.Enforcements |
+                    Select-Object -First 1 -ExpandProperty OffsetHex
+                )
                 Hash        = $enforcedHash
                 EnforcedAt  = (Get-Date).ToUniversalTime().ToString('o')
             }

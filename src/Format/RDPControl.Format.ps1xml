@@ -18,6 +18,18 @@
                                 <ScriptBlock>'True (no changes applied)'</ScriptBlock>
                             </ListItem>
                             <ListItem>
+                                <Label>Binary Path</Label>
+                                <PropertyName>BinaryPath</PropertyName>
+                            </ListItem>
+                            <ListItem>
+                                <Label>Binary Version</Label>
+                                <PropertyName>BinaryVersion</PropertyName>
+                            </ListItem>
+                            <ListItem>
+                                <Label>Hash (SHA-256)</Label>
+                                <PropertyName>Hash</PropertyName>
+                            </ListItem>
+                            <ListItem>
                                 <Label>Current State</Label>
                                 <PropertyName>CurrentState</PropertyName>
                             </ListItem>
@@ -26,20 +38,24 @@
                                 <PropertyName>TargetState</PropertyName>
                             </ListItem>
                             <ListItem>
-                                <Label>Binary Path</Label>
-                                <PropertyName>BinaryPath</PropertyName>
-                            </ListItem>
-                            <ListItem>
-                                <Label>Hash</Label>
-                                <PropertyName>Hash</PropertyName>
-                            </ListItem>
-                            <ListItem>
-                                <Label>Snapshot Action</Label>
-                                <PropertyName>SnapshotAction</PropertyName>
-                            </ListItem>
-                            <ListItem>
                                 <Label>Signature Found</Label>
                                 <PropertyName>SignatureFound</PropertyName>
+                            </ListItem>
+                            <ListItem>
+                                <Label>Policy Applicable</Label>
+                                <PropertyName>PolicyApplicable</PropertyName>
+                            </ListItem>
+                            <ListItem>
+                                <Label>Strategy</Label>
+                                <PropertyName>Strategy</PropertyName>
+                            </ListItem>
+                            <ListItem>
+                                <Label>Detection Mode</Label>
+                                <PropertyName>DetectionMode</PropertyName>
+                            </ListItem>
+                            <ListItem>
+                                <Label>Confidence</Label>
+                                <PropertyName>Confidence</PropertyName>
                             </ListItem>
                             <ListItem>
                                 <Label>Signature Offset</Label>
@@ -58,16 +74,32 @@
                                 <PropertyName>CurrentBytes</PropertyName>
                             </ListItem>
                             <ListItem>
-                                <Label>Replacement Bytes</Label>
-                                <PropertyName>ReplacementHex</PropertyName>
+                                <Label>Enforcement Count</Label>
+                                <PropertyName>EnforcementCount</PropertyName>
                             </ListItem>
                             <ListItem>
-                                <Label>Policy Applicable</Label>
-                                <PropertyName>IsApplicable</PropertyName>
+                                <Label>Snapshot</Label>
+                                <PropertyName>SnapshotAction</PropertyName>
                             </ListItem>
                             <ListItem>
                                 <Label>Requires Snapshot</Label>
                                 <PropertyName>RequiresSnapshot</PropertyName>
+                            </ListItem>
+                            <ListItem>
+                                <Label>Validation Status</Label>
+                                <PropertyName>ValidationStatus</PropertyName>
+                            </ListItem>
+                            <ListItem>
+                                <Label>Enforcements</Label>
+                                <PropertyName>Enforcements</PropertyName>
+                            </ListItem>
+                            <ListItem>
+                                <Label>OS Name</Label>
+                                <PropertyName>OsName</PropertyName>
+                            </ListItem>
+                            <ListItem>
+                                <Label>OS Build</Label>
+                                <PropertyName>OsBuild</PropertyName>
                             </ListItem>
                         </ListItems>
                     </ListEntry>

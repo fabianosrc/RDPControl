@@ -35,6 +35,17 @@
         $Script:MockSignatureFound = [PSCustomObject]@{
             PSTypeName       = 'RDPControl.BinarySignature'
             Found            = $true
+            Strategy         = 'CoreReplacement'
+            EnforcementCount = 1
+            Enforcements     = @(
+                [PSCustomObject]@{
+                    Offset           = 100
+                    OffsetHex        = '0x00000064'
+                    ReplacementBytes = [byte[]](0xB8, 0x00, 0x01, 0x00, 0x00, 0x89, 0x81, 0x38, 0x06, 0x00, 0x00, 0x90)
+                    ReplacementHex   = 'B8 00 01 00 00 89 81 38 06 00 00 90'
+                    Strategy         = 'CoreReplacement'
+                }
+            )
             SignatureIndex   = 100
             SignatureOffset  = '0x00000064'
             WriteIndex       = 100
@@ -51,6 +62,9 @@
         $Script:MockSignatureNotFound = [PSCustomObject]@{
             PSTypeName       = 'RDPControl.BinarySignature'
             Found            = $false
+            Strategy         = $null
+            EnforcementCount = 0
+            Enforcements     = [object[]]@()
             SignatureIndex   = -1
             SignatureOffset  = $null
             WriteIndex       = -1
