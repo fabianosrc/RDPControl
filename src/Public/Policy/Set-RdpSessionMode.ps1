@@ -124,6 +124,8 @@ function Set-RdpSessionMode {
             $osInfo     = Get-CimInstance -ClassName Win32_OperatingSystem
             $osVersion  = $osInfo.Caption
             $osBuild    = $osInfo.BuildNumber
+            $osUBR      = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').UBR
+
 
             Write-Verbose -Message '[DryRun] Locating signature.'
             $signature = Find-BinarySignature -Bytes $assembly.Bytes
@@ -196,6 +198,7 @@ function Set-RdpSessionMode {
                 Enforcements       = $enforcementsFormatted
                 OsName             = $osVersion
                 OsBuild            = $osBuild
+                OsUBR              = $osUBR
             }
 
             $result = New-Object -TypeName PSObject -Property $outputFields
