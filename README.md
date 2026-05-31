@@ -90,16 +90,13 @@ Get-RdpEnvironment
 Get-RdpPort
 Get-RdpService
 
-# 3. Take a snapshot of the current system binary
-New-RdpSnapshot
-
-# 4. Preview what enabling multi-session would do (no changes applied)
+# 3. Preview what enabling multi-session would do (no changes applied)
 Set-RdpSessionMode -Enabled -DryRun
 
-# 5. Enable multi-session mode
+# 4. Enable multi-session mode
 Set-RdpSessionMode -Enabled
 
-# 6. Enable the self-healing watchdog
+# 5. Enable the self-healing watchdog
 Start-RdpWatchdog
 ```
 
