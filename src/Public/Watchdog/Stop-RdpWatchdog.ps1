@@ -19,8 +19,8 @@ None
 
 .OUTPUTS
 PSCustomObject with properties:
-    Status    [string] - 'Stopped'
-    StoppedAt [string] - ISO 8601 UTC timestamp
+    Status    [string] - 'Stopped' or 'NotRegistered'
+    StoppedAt [string] - ISO 8601 UTC timestamp, or $null when NotRegistered
 #>
 function Stop-RdpWatchdog {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
@@ -52,11 +52,15 @@ function Stop-RdpWatchdog {
         $taskName = 'RDPControl Watchdog'
         $taskPath = '\RDPControl\'
 
-        $task = Get-ScheduledTask -TaskName $taskName -TaskPath $taskPath -ErrorAction SilentlyContinue
+        $task = Get-WatchdogTask
 
         if ($null -eq $task) {
             Write-Warning -Message 'RDPControl Watchdog is not registered. Nothing to stop.'
-            return
+
+            return [PSCustomObject]@{
+                Status    = 'NotRegistered'
+                StoppedAt = $null
+            }
         }
 
         if (-not ($Force -or $PSCmdlet.ShouldProcess('RDPControl Watchdog', 'Unregister Scheduled Task'))) {

@@ -70,54 +70,56 @@ function Start-RdpWatchdog {
             )
         }
 
+        $module = Get-Module -Name 'RDPControl'
+
+        if (-not $module) {
+            $PSCmdlet.ThrowTerminatingError(
+                [System.Management.Automation.ErrorRecord]::new(
+                    [System.InvalidOperationException]::new(
+                        'RDPControl module is not loaded.'
+                    ),
+                    'ModuleNotLoaded',
+                    [System.Management.Automation.ErrorCategory]::InvalidOperation,
+                    $null
+                )
+            )
+        }
+
         if (-not ($Force -or $PSCmdlet.ShouldProcess('RDPControl Watchdog', 'Register Scheduled Task'))) {
             return
         }
 
-        $modulePath = (Get-Module -Name 'RDPControl').ModuleBase
-        $command    = "Import-Module '$modulePath\RDPControl.psd1'; if (-not (Test-EnforcementState)) { Invoke-Enforcement }"
-        $argument   = "-NoProfile -NonInteractive -WindowStyle Hidden -Command `"$command`""
-
-        $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $argument
-
-        # Event-based triggers via CIM for Windows Update events
-        $triggerClass = Get-CimClass -ClassName 'MSFT_TaskEventTrigger' -Namespace 'Root\Microsoft\Windows\TaskScheduler'
-
-        $trigger19 = New-CimInstance -CimClass $triggerClass -ClientOnly -Property @{
-            Enabled      = $true
-            Subscription = '<QueryList><Query Id="0"><Select Path="Microsoft-Windows-WindowsUpdateClient/Operational">*[System[EventID=19]]</Select></Query></QueryList>'
-        }
-
-        $trigger20 = New-CimInstance -CimClass $triggerClass -ClientOnly -Property @{
-            Enabled      = $true
-            Subscription = '<QueryList><Query Id="0"><Select Path="Microsoft-Windows-WindowsUpdateClient/Operational">*[System[EventID=20]]</Select></Query></QueryList>'
-        }
-
-        $settingsParams = @{
-            ExecutionTimeLimit = (New-TimeSpan -Minutes 5)
-            MultipleInstances  = 'IgnoreNew'
-            StartWhenAvailable = $true
-        }
-
-        $settings  = New-ScheduledTaskSettingsSet @settingsParams
-        $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest
-
         try {
-            if (Get-ScheduledTask -TaskName 'RDPControl Watchdog' -ErrorAction SilentlyContinue) {
+            $modulePath = $module.ModuleBase
+            $command    = "Import-Module '$modulePath\RDPControl.psd1'; if (-not (Test-EnforcementState)) { Invoke-Enforcement }"
+            $argument   = "-NoProfile -NonInteractive -WindowStyle Hidden -Command `"$command`""
+
+            $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $argument
+
+            $trigger19 = New-WatchdogTaskTrigger -EventId 19
+            $trigger20 = New-WatchdogTaskTrigger -EventId 20
+
+            $settingsParams = @{
+                ExecutionTimeLimit = (New-TimeSpan -Minutes 5)
+                MultipleInstances  = 'IgnoreNew'
+                StartWhenAvailable = $true
+            }
+
+            $settings  = New-ScheduledTaskSettingsSet @settingsParams
+            $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest
+
+            if (Get-WatchdogTask) {
                 Unregister-ScheduledTask -TaskName 'RDPControl Watchdog' -Confirm:$false
             }
 
             $registerParams = @{
-                TaskName  = 'RDPControl Watchdog'
-                TaskPath  = '\RDPControl\'
                 Action    = $action
                 Trigger   = @($trigger19, $trigger20)
                 Settings  = $settings
                 Principal = $principal
-                Force     = $true
             }
 
-            Register-ScheduledTask @registerParams | Out-Null
+            Register-WatchdogTask @registerParams | Out-Null
 
             New-StoreAuditRecord -Operation 'Start-RdpWatchdog' -Details 'Status=Started' | Out-Null
 
