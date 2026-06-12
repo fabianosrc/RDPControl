@@ -29,10 +29,7 @@ function Get-RdpWatchdogStatus {
     }
 
     process {
-        $taskName = 'RDPControl Watchdog'
-        $taskPath = '\RDPControl\'
-
-        $task = Get-ScheduledTask -TaskName $taskName -TaskPath $taskPath -ErrorAction SilentlyContinue
+        $task = Get-WatchdogTask
 
         if ($null -eq $task) {
             return [PSCustomObject]@{
@@ -43,7 +40,7 @@ function Get-RdpWatchdogStatus {
             }
         }
 
-        $taskInfo = $task | Get-ScheduledTaskInfo -ErrorAction SilentlyContinue
+        $taskInfo = Get-WatchdogTaskInfo -Task $task
 
         $status = if ($task.State -eq 'Ready' -or $task.State -eq 'Running') {
             'Running'
@@ -51,23 +48,53 @@ function Get-RdpWatchdogStatus {
             'Stopped'
         }
 
-        $lastRun = if ($null -ne $taskInfo.LastRunTime) {
-            $taskInfo.LastRunTime.ToUniversalTime().ToString('o')
-        } else {
-            $null
-        }
-
-        $nextRun = if ($null -ne $taskInfo.NextRunTime) {
-            $taskInfo.NextRunTime.ToUniversalTime().ToString('o')
-        } else {
-            $null
-        }
-
         [PSCustomObject]@{
             Status    = $status
-            LastRun   = $lastRun
-            NextRun   = $nextRun
+            LastRun   = Get-WatchdogTimestamp -TaskInfo $taskInfo -PropertyName 'LastRunTime'
+            NextRun   = Get-WatchdogTimestamp -TaskInfo $taskInfo -PropertyName 'NextRunTime'
             CheckedAt = (Get-Date).ToUniversalTime().ToString('o')
         }
     }
+}
+
+<#
+.SYNOPSIS
+Safely extracts and formats a timestamp property from a task info object.
+
+.DESCRIPTION
+Returns $null if the task info object is $null, the property does not
+exist, or the property value is $null. Otherwise returns the value
+formatted as an ISO 8601 UTC string.
+
+.PARAMETER TaskInfo
+The task info object returned by Get-WatchdogTaskInfo. May be $null.
+
+.PARAMETER PropertyName
+The name of the timestamp property to extract.
+
+.OUTPUTS
+System.String or $null
+#>
+function Get-WatchdogTimestamp {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param (
+        [Parameter()]
+        [object]$TaskInfo,
+
+        [Parameter(Mandatory)]
+        [string]$PropertyName
+    )
+
+    if ($null -eq $TaskInfo) {
+        return $null
+    }
+
+    $property = $TaskInfo.PSObject.Properties[$PropertyName]
+
+    if ($null -eq $property -or $null -eq $property.Value) {
+        return $null
+    }
+
+    return $property.Value.ToUniversalTime().ToString('o')
 }
