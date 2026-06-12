@@ -48,9 +48,19 @@ and a self-healing watchdog.
 
 ### From source (recommended while pre-release)
 
+Get the source by cloning the repository, downloading it in PowerShell, or via
+[direct download](https://github.com/fabianosrc/RDPControl/archive/refs/heads/main.zip).
+
 ```powershell
-# Clone the repository
+# Clone the repository with git
 git clone https://github.com/fabianosrc/RDPControl.git
+
+# Or download and extract the current main branch (no git required)
+Invoke-WebRequest https://github.com/fabianosrc/RDPControl/archive/refs/heads/main.zip -OutFile RDPControl.zip
+Expand-Archive RDPControl.zip -DestinationPath .
+Rename-Item RDPControl-main RDPControl
+
+# Change into the module directory
 cd RDPControl
 
 # Import directly from source (run as Administrator)
