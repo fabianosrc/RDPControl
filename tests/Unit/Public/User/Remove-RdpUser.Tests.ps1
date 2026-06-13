@@ -117,7 +117,10 @@ Describe 'Remove-RdpUser' {
             $errors.Count | Should -BeGreaterThan 0
 
             $targetError = $errors |
-                Where-Object { $_.FullyQualifiedErrorId -match '^RemoveRdpUserIdentityNotResolved' }
+                Where-Object {
+                    $_ -is [System.Management.Automation.ErrorRecord] -and
+                    $_.FullyQualifiedErrorId -match '^RemoveRdpUserIdentityNotResolved'
+                }
 
             $targetError | Should -Not -BeNullOrEmpty
         }
@@ -595,6 +598,7 @@ Describe 'Remove-RdpUser' {
 
             $targetErrors = @(
                 $errors | Where-Object {
+                    $_ -is [System.Management.Automation.ErrorRecord] -and
                     $_.FullyQualifiedErrorId -match '^RemoveRdpUserFailed'
                 }
             )
@@ -624,8 +628,10 @@ Describe 'Remove-RdpUser' {
 
             Remove-RdpUser @rdpUserParams | Out-Null
 
-            $targetError = $errors |
-                Where-Object { $_.FullyQualifiedErrorId -match '^RemoveRdpUserFailed' }
+            $targetError = $errors | Where-Object {
+                $_ -is [System.Management.Automation.ErrorRecord] -and
+                $_.FullyQualifiedErrorId -match '^RemoveRdpUserFailed'
+            }
 
             $targetError | Should -Not -BeNullOrEmpty
         }
@@ -668,8 +674,10 @@ Describe 'Remove-RdpUser' {
 
             Remove-RdpUser @rdpUserParams | Out-Null
 
-            $targetError = $errors |
-                Where-Object { $_.FullyQualifiedErrorId -match '^RemoveRdpUserFailed' }
+            $targetError = $errors | Where-Object {
+                $_ -is [System.Management.Automation.ErrorRecord] -and
+                $_.FullyQualifiedErrorId -match '^RemoveRdpUserFailed'
+            }
 
             $targetError.CategoryInfo.Category | Should -Be 'InvalidOperation'
         }
@@ -690,8 +698,10 @@ Describe 'Remove-RdpUser' {
 
             Remove-RdpUser @rdpUserParams | Out-Null
 
-            $targetError = $errors |
-                Where-Object { $_.FullyQualifiedErrorId -match '^RemoveRdpUserFailed' }
+            $targetError = $errors | Where-Object {
+                $_ -is [System.Management.Automation.ErrorRecord] -and
+                $_.FullyQualifiedErrorId -match '^RemoveRdpUserFailed'
+            }
 
             $targetError.CategoryInfo.Category | Should -Be 'PermissionDenied'
         }
