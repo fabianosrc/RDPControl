@@ -1,6 +1,4 @@
-﻿#Requires -Version 5.1
-
-<#
+﻿<#
 .SYNOPSIS
 Registers the RDPControl Watchdog scheduled task.
 

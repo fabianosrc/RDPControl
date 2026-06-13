@@ -3,28 +3,34 @@
 Adds users or groups to the Remote Desktop Users local group.
 
 .DESCRIPTION
-Adds one or more local or domain accounts to the 'Remote Desktop Users'
-local group. Skips accounts that are already members.
+Adds one or more local or Active Directory identities to the
+Remote Desktop Users local group. Identities are resolved to
+their SID before membership is evaluated, so the comparison
+is correct across domains and locales.
 
-Accepts array input and pipeline input.
+Identities that cannot be resolved produce a non-terminating
+error and processing continues with the remaining identities.
+Identities that are already members are skipped with a warning.
 
 .PARAMETER Identity
-One or more account names to add. Accepts 'Username' or 'DOMAIN\Username' format.
+One or more identities to add. Accepts local account names,
+'DOMAIN\User' or '.\User' formats, and SID strings. Accepts
+pipeline input and pipeline input by property name.
 
 .EXAMPLE
 PS C:\> Add-RdpUser -Identity 'User1'
 
-.EXAMPLE
-PS C:\> Add-RdpUser -Identity 'User1', 'DOMAIN\User2'
+Adds the local account 'User1' to Remote Desktop Users.
 
 .EXAMPLE
-PS C:\> 'User1', 'DOMAIN\User2' | Add-RdpUser
+PS C:\> 'User1', 'DOMAIN\User2' | Add-RdpUser -Confirm:$false
 
-.INPUTS
-System.String[]
+Adds multiple identities via pipeline, suppressing confirmation prompts.
 
-.OUTPUTS
-None
+.EXAMPLE
+PS C:\> Get-RdpUser | Where-Object Domain -eq 'CONTOSO' | Add-RdpUser
+
+Re-adds all CONTOSO-domain members (no-op if already members).
 #>
 function Add-RdpUser {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
@@ -39,83 +45,112 @@ function Add-RdpUser {
         Assert-RdpEnvironment
 
         if (-not (Test-IsElevated)) {
-            $err = [System.Management.Automation.ErrorRecord]::new(
-                [System.UnauthorizedAccessException]::new(
-                    'Add-RdpUser requires elevated privileges. ' +
-                    'Run PowerShell as Administrator.'
-                ),
-                'ElevationRequired',
-                [System.Management.Automation.ErrorCategory]::PermissionDenied,
-                $null
+            $PSCmdlet.ThrowTerminatingError(
+                [System.Management.Automation.ErrorRecord]::new(
+                    [System.UnauthorizedAccessException]::new(
+                        'Add-RdpUser requires elevated privileges. Run PowerShell as Administrator.'
+                    ),
+                    'ElevationRequired',
+                    [System.Management.Automation.ErrorCategory]::PermissionDenied,
+                    $null
+                )
             )
-
-            $PSCmdlet.ThrowTerminatingError($err)
         }
 
-        $existingMembers = [System.Collections.Generic.HashSet[string]]::new(
-            [System.StringComparer]::OrdinalIgnoreCase
-        )
+        try {
+            $existingSids = Get-RdpMembershipCache
 
-        Get-RdpUser | Select-Object -ExpandProperty Name | ForEach-Object {
-            $shortName = ($_ -split '\\')[-1]
-            [void]$existingMembers.Add($shortName)
+            if ($null -eq $existingSids) {
+                throw 'Membership cache is null.'
+            }
+
+            if (-not ($existingSids -is [System.Collections.Generic.HashSet[string]])) {
+                throw (
+                    "Expected membership cache type " +
+                    "[HashSet[string]], received " +
+                    "'$($existingSids.GetType().FullName)'."
+                )
+            }
+        } catch {
+            $PSCmdlet.ThrowTerminatingError(
+                [System.Management.Automation.ErrorRecord]::new(
+                    $_.Exception,
+                    'MembershipCacheInitializationFailed',
+                    [System.Management.Automation.ErrorCategory]::InvalidData,
+                    $null
+                )
+            )
         }
     }
 
     process {
         foreach ($id in $Identity) {
-            # FIX #2: Normalize input to short name before every comparison.
-            $shortId = ($id -split '\\')[-1]
 
-            try {
-                if ($existingMembers.Contains($shortId)) {
-                    Write-Warning -Message "[$id] is already a member of Remote Desktop Users. Skipping."
-                    continue
-                }
+            if ([string]::IsNullOrWhiteSpace($id)) {
+                continue
+            }
 
-                # FIX #3: Log when the user explicitly declines the confirmation prompt.
-                if (-not $PSCmdlet.ShouldProcess($id, 'Add to Remote Desktop Users')) {
-                    Write-Verbose -Message "[$id] skipped by user confirmation."
-                    continue
-                }
+            $resolved = Resolve-RdpIdentity -Identity $id
 
-                Add-LocalGroupMember -Group 'Remote Desktop Users' -Member $id -ErrorAction Stop
-
-                # FIX #4: Update the in-memory set so a duplicate entry later in the
-                #         same pipeline is caught and skipped rather than hitting an
-                #         error from Add-LocalGroupMember.
-                [void]$existingMembers.Add($shortId)
-
-                # FIX #7: Build the audit details string directly - the intermediate
-                #         array added no value.
-                New-StoreAuditRecord -Operation 'Add-RdpUser' -Details "Identity=$id;Action=Added" | Out-Null
-
-                Write-Verbose -Message "[$id] added to Remote Desktop Users."
-            } catch {
-                # FIX #5: Map the exception message to a more specific ErrorCategory
-                #         instead of using the catch-all WriteError for every failure.
-                $category = switch -Regex ($_.Exception.Message) {
-                    'not found|no such|does not exist' {
-                        [System.Management.Automation.ErrorCategory]::ObjectNotFound
-                        break
-                    }
-                    'access|permission|privilege|unauthorized' {
-                        [System.Management.Automation.ErrorCategory]::PermissionDenied
-                        break
-                    }
-                    default {
-                        [System.Management.Automation.ErrorCategory]::WriteError
-                    }
-                }
-
-                $err = [System.Management.Automation.ErrorRecord]::new(
-                    $_.Exception,
-                    'AddRdpUserFailed',
-                    $category,
-                    $id
+            if (-not $resolved.IsResolved) {
+                $PSCmdlet.WriteError(
+                    [System.Management.Automation.ErrorRecord]::new(
+                        [System.Security.Principal.IdentityNotMappedException]::new(
+                            $resolved.ErrorMessage
+                        ),
+                        'AddRdpUserIdentityNotResolved',
+                        [System.Management.Automation.ErrorCategory]::ObjectNotFound,
+                        $id
+                    )
                 )
 
-                $PSCmdlet.WriteError($err)
+                continue
+            }
+
+            $targetDescription = if ($resolved.Name) {
+                "$($resolved.Name) [$($resolved.Sid)]"
+            } else {
+                $resolved.Sid
+            }
+
+            if ($existingSids.Contains($resolved.Sid)) {
+                Write-Warning -Message "Identity already present in Remote Desktop Users: $targetDescription"
+                continue
+            }
+
+            if (-not $PSCmdlet.ShouldProcess($targetDescription, 'Add to Remote Desktop Users')) {
+                Write-Verbose -Message "Operation cancelled by user: $targetDescription"
+                continue
+            }
+
+            try {
+                Add-LocalGroupMember -Group 'Remote Desktop Users' -Member $resolved.Sid
+
+                [void]$existingSids.Add($resolved.Sid)
+
+                New-StoreAuditRecord -Operation 'Add-RdpUser' -Details (
+                    "Identity=$id;" +
+                    "ResolvedName=$($resolved.Name);" +
+                    "Sid=$($resolved.Sid);" +
+                    "Action=Added"
+                ) | Out-Null
+
+                Write-Verbose -Message "Added to Remote Desktop Users: $targetDescription"
+
+            } catch [Microsoft.PowerShell.Commands.MemberExistsException] {
+                # Another process may have added the member
+                # after the cache check.
+                [void]$existingSids.Add($resolved.Sid)
+                Write-Verbose -Message "Identity was added concurrently and is now present: $targetDescription"
+            } catch {
+                $PSCmdlet.WriteError(
+                    [System.Management.Automation.ErrorRecord]::new(
+                        $_.Exception,
+                        'AddRdpUserFailed',
+                        [System.Management.Automation.ErrorCategory]::WriteError,
+                        $id
+                    )
+                )
             }
         }
     }
