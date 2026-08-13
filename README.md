@@ -316,9 +316,10 @@ Restore-RdpSnapshot -Id 1
 ### Watchdog
 
 The watchdog is a Windows Scheduled Task (`\RDPControl\RDPControl Watchdog`)
-that runs under the `SYSTEM` account. It is triggered by Windows Update events
-(Event ID 19 and 20 from the `WindowsUpdateClient` log) and re-applies
-enforcement automatically if changes are detected.
+that runs under the `SYSTEM` account. It is triggered at system startup (30
+seconds after boot) and re-applies enforcement automatically if changes are
+detected. Booting is used as the trigger because every change that reverts
+enforcement — Windows Update servicing in particular — ends in a restart.
 
 | Cmdlet | Description |
 |---|---|
@@ -357,7 +358,8 @@ Set-RdpSessionMode -Enabled           ← apply enforcement
         ▼
   (normal operation)
         │
-        ├── Windows Update runs → Watchdog re-applies enforcement automatically
+        ├── System reboots (e.g. after Windows Update)
+        │        → Watchdog re-applies enforcement automatically
         │
         └── To revert:
               Stop-RdpWatchdog

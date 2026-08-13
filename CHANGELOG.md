@@ -48,6 +48,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   category, and target object from engine layer
 
 ### Fixed
+- `Start-RdpWatchdog` — the watchdog never fired: the Windows Update event
+  subscription (Event ID 19/20 from `WindowsUpdateClient/Operational`) did not
+  reliably raise for the servicing operations that revert enforcement. The task
+  now uses an at-startup trigger with a 30-second boot delay, which covers
+  Windows Update (its changes land across a restart) and any other reboot
 - `Initialize-RdpEnvironment -Purge` — releases SQLite file locks before
   `Remove-Item` via `SQLiteConnection.ClearAllPools` + `GC.Collect`
 - `Write-BinaryByte` output leaking into `Invoke-Enforcement` return value —

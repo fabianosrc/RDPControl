@@ -1,20 +1,29 @@
-﻿<#
+<#
 .SYNOPSIS
-Creates a CIM event trigger for the RDPControl Watchdog scheduled task.
+Creates the boot trigger for the RDPControl Watchdog scheduled task.
 
 .DESCRIPTION
-Builds an MSFT_TaskEventTrigger CIM instance subscribed to the specified
-Windows Update Client event ID.
+Builds an at-startup scheduled task trigger with a short delay so that
+services and the network stack are available before enforcement is
+re-applied.
 
-Exists as a wrapper to isolate CIM dependencies from business logic and
-allow unit testing without real CimClass/CimInstance objects.
+A boot trigger is used instead of a Windows Update event subscription
+because Windows Update reverts changes across a reboot in ways that do
+not reliably raise a subscribable event, while every servicing operation
+that matters ends in a restart.
 
-.PARAMETER EventId
-The Windows Update Client event ID to subscribe to. Valid values are
-19 and 20 (Microsoft-Windows-WindowsUpdateClient/Operational).
+Exists as a wrapper to isolate ScheduledTasks dependencies from business
+logic and allow unit testing without real CimInstance objects.
+
+.PARAMETER Delay
+The delay after boot before the task runs, as an ISO 8601 duration.
+Defaults to 'PT30S' (30 seconds).
 
 .EXAMPLE
-PS C:\> New-WatchdogTaskTrigger -EventId 19
+PS C:\> New-WatchdogTaskTrigger
+
+.EXAMPLE
+PS C:\> New-WatchdogTaskTrigger -Delay 'PT5M'
 
 .INPUTS
 None
@@ -28,22 +37,17 @@ function New-WatchdogTaskTrigger {
     [Diagnostics.CodeAnalysis.SuppressMessage(
         'PSUseShouldProcessForStateChangingFunctions',
         '',
-        Justification = 'Builds a client-only CIM instance in memory; no system state is changed.'
+        Justification = 'Builds a client-only trigger object in memory; no system state is changed.'
     )]
     param (
-        [Parameter(Mandatory)]
-        [ValidateSet(19, 20)]
-        [int]$EventId
+        [Parameter()]
+        [ValidatePattern('^P(?!$)(\d+Y)?(\d+M)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+S)?)?$')]
+        [string]$Delay = 'PT30S'
     )
 
-    $triggerClass = Get-CimClass -ClassName 'MSFT_TaskEventTrigger' -Namespace 'Root\Microsoft\Windows\TaskScheduler' -ErrorAction Stop
+    $trigger = New-ScheduledTaskTrigger -AtStartup -ErrorAction Stop
 
-    $subscription = '<QueryList><Query Id="0"><Select Path="Microsoft-Windows-WindowsUpdateClient/Operational">' +
-        "*[System[EventID=$EventId]]" +
-        '</Select></Query></QueryList>'
+    $trigger.Delay = $Delay
 
-    New-CimInstance -CimClass $triggerClass -ClientOnly -Property @{
-        Enabled      = $true
-        Subscription = $subscription
-    } -ErrorAction Stop
+    $trigger
 }
