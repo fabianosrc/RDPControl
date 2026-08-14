@@ -120,10 +120,18 @@ Describe 'Start-RdpWatchdog' {
             Should -Invoke Register-WatchdogTask -Times 1
         }
 
-        It 'Creates two event triggers for Windows Update events' {
+        It 'Creates a single boot trigger' {
             Start-RdpWatchdog -Force | Out-Null
 
-            Should -Invoke New-WatchdogTaskTrigger -Times 2
+            Should -Invoke New-WatchdogTaskTrigger -Times 1
+        }
+
+        It 'Registers the task with the boot trigger' {
+            Start-RdpWatchdog -Force | Out-Null
+
+            Should -Invoke Register-WatchdogTask -Times 1 -ParameterFilter {
+                $Trigger.Count -eq 1
+            }
         }
 
         It 'Writes an audit record' {

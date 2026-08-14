@@ -6,8 +6,10 @@ Starts the RDPControl self-healing watchdog.
 Registers a Windows Scheduled Task that monitors system integrity and
 automatically re-applies enforcement when changes are detected.
 
-The task is triggered by Windows Update events (Event ID 19 and 20 from
-Microsoft-Windows-WindowsUpdateClient) and runs under the SYSTEM account.
+The task is triggered at system startup (30 seconds after boot) and runs
+under the SYSTEM account. Booting is used as the trigger because every
+change that reverts enforcement — Windows Update servicing in particular —
+ends in a restart.
 
 This cmdlet requires an active enforcement state and will fail if no
 enforced snapshot is available.
@@ -96,8 +98,7 @@ function Start-RdpWatchdog {
 
             $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $argument
 
-            $trigger19 = New-WatchdogTaskTrigger -EventId 19
-            $trigger20 = New-WatchdogTaskTrigger -EventId 20
+            $trigger = New-WatchdogTaskTrigger
 
             $settingsParams = @{
                 ExecutionTimeLimit = (New-TimeSpan -Minutes 5)
@@ -114,7 +115,7 @@ function Start-RdpWatchdog {
 
             $registerParams = @{
                 Action    = $action
-                Trigger   = @($trigger19, $trigger20)
+                Trigger   = @($trigger)
                 Settings  = $settings
                 Principal = $principal
             }
