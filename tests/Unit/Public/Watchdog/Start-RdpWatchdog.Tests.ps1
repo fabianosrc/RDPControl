@@ -6,6 +6,7 @@ BeforeAll {
     . "$PSScriptRoot/../../../../src/Private/Engine/Test-IsElevated.ps1"
     . "$PSScriptRoot/../../../../src/Private/Engine/Get-WatchdogTask.ps1"
     . "$PSScriptRoot/../../../../src/Private/Engine/New-WatchdogTaskTrigger.ps1"
+    . "$PSScriptRoot/../../../../src/Private/Engine/New-WatchdogTaskAction.ps1"
     . "$PSScriptRoot/../../../../src/Private/Engine/Register-WatchdogTask.ps1"
     . "$PSScriptRoot/../../../../src/Private/Enforcement/Test-EnforcementState.ps1"
     . "$PSScriptRoot/../../../../src/Public/Watchdog/Start-RdpWatchdog.ps1"
@@ -19,7 +20,7 @@ Describe 'Start-RdpWatchdog' {
         Mock Test-EnforcementState { $true }
         Mock Get-WatchdogTask { $null }
         Mock Get-Module { [pscustomobject]@{ ModuleBase = 'C:\Modules\RDPControl' } }
-        Mock New-ScheduledTaskAction { [pscustomobject]@{ Execute = 'powershell.exe' } }
+        Mock New-WatchdogTaskAction { [pscustomobject]@{ Execute = 'powershell.exe' } }
         Mock New-WatchdogTaskTrigger { [pscustomobject]@{ Enabled = $true } }
         Mock New-ScheduledTaskSettingsSet { [pscustomobject]@{} }
         Mock New-ScheduledTaskPrincipal { [pscustomobject]@{ UserId = 'SYSTEM' } }
@@ -116,7 +117,9 @@ Describe 'Start-RdpWatchdog' {
 
             Start-RdpWatchdog -Force | Out-Null
 
-            Should -Invoke Unregister-ScheduledTask -Times 1
+            Should -Invoke Unregister-ScheduledTask -Times 1 -ParameterFilter {
+                $TaskName -eq 'RDPControl Watchdog' -and $TaskPath -eq '\RDPControl\'
+            }
             Should -Invoke Register-WatchdogTask -Times 1
         }
 
@@ -134,10 +137,46 @@ Describe 'Start-RdpWatchdog' {
             }
         }
 
+        It 'Builds the task action for the loaded module path' {
+            Start-RdpWatchdog -Force | Out-Null
+
+            Should -Invoke New-WatchdogTaskAction -Times 1 -ParameterFilter {
+                $ModulePath -eq 'C:\Modules\RDPControl'
+            }
+        }
+
+        It 'Runs the task as the SYSTEM service account with highest privileges' {
+            Start-RdpWatchdog -Force | Out-Null
+
+            Should -Invoke New-ScheduledTaskPrincipal -Times 1 -ParameterFilter {
+                $UserId -eq 'SYSTEM' -and
+                "$LogonType" -eq 'ServiceAccount' -and
+                "$RunLevel" -eq 'Highest'
+            }
+        }
+
         It 'Writes an audit record' {
             Start-RdpWatchdog -Force | Out-Null
 
             Should -Invoke New-StoreAuditRecord -Times 1
+        }
+    }
+
+    Context 'Module location' {
+
+        It 'Warns when the module is loaded from a network path' {
+            Mock Get-Module { [pscustomobject]@{ ModuleBase = '\\wsl.localhost\Debian\home\user\RDPControl' } }
+
+            Start-RdpWatchdog -Force -WarningAction SilentlyContinue -WarningVariable warnings | Out-Null
+
+            $warnings | Should -Not -BeNullOrEmpty
+            $warnings[0].Message | Should -Match 'SYSTEM'
+        }
+
+        It 'Does not warn for a local module path' {
+            Start-RdpWatchdog -Force -WarningAction SilentlyContinue -WarningVariable warnings | Out-Null
+
+            $warnings | Should -BeNullOrEmpty
         }
     }
 
@@ -167,8 +206,8 @@ Describe 'Start-RdpWatchdog' {
             { Start-RdpWatchdog -Force } | Should -Throw -ErrorId 'StartWatchdogFailed,*'
         }
 
-        It 'Wraps New-ScheduledTaskAction failures' {
-            Mock New-ScheduledTaskAction { throw 'Action failure' }
+        It 'Wraps New-WatchdogTaskAction failures' {
+            Mock New-WatchdogTaskAction { throw 'Action failure' }
 
             { Start-RdpWatchdog -Force } | Should -Throw -ErrorId 'StartWatchdogFailed,*'
         }

@@ -3,13 +3,20 @@
 Starts the RDPControl self-healing watchdog.
 
 .DESCRIPTION
-Registers a Windows Scheduled Task that monitors system integrity and
-automatically re-applies enforcement when changes are detected.
+Registers a Windows Scheduled Task that runs Invoke-RdpWatchdog at every
+boot. Invoke-RdpWatchdog checks the enforcement state and re-applies
+enforcement when it has drifted, for example after Windows servicing
+replaced the target binary.
 
 The task is triggered at system startup (30 seconds after boot) and runs
-under the SYSTEM account. Booting is used as the trigger because every
-change that reverts enforcement — Windows Update servicing in particular —
-ends in a restart.
+under the SYSTEM account with confirmation prompts suppressed. Booting is
+used as the trigger because every change that reverts enforcement,
+Windows Update servicing in particular, ends in a restart.
+
+The module must be loaded from a local path when the watchdog is started.
+The SYSTEM account cannot reach network shares or similar external paths
+at boot, so a module imported from such a location makes the task fail
+before it can run.
 
 This cmdlet requires an active enforcement state and will fail if no
 enforced snapshot is available.
@@ -93,10 +100,15 @@ function Start-RdpWatchdog {
 
         try {
             $modulePath = $module.ModuleBase
-            $command    = "Import-Module '$modulePath\RDPControl.psd1'; if (-not (Test-EnforcementState)) { Invoke-Enforcement }"
-            $argument   = "-NoProfile -NonInteractive -WindowStyle Hidden -Command `"$command`""
 
-            $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $argument
+            if ($modulePath -like '\\*') {
+                Write-Warning -Message (
+                    "RDPControl is loaded from a network path ($modulePath). " +
+                    'The SYSTEM account cannot reach it at boot; import the module from a local path first.'
+                )
+            }
+
+            $action = New-WatchdogTaskAction -ModulePath $modulePath
 
             $trigger = New-WatchdogTaskTrigger
 
@@ -107,10 +119,10 @@ function Start-RdpWatchdog {
             }
 
             $settings  = New-ScheduledTaskSettingsSet @settingsParams
-            $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest
+            $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
 
             if (Get-WatchdogTask) {
-                Unregister-ScheduledTask -TaskName 'RDPControl Watchdog' -Confirm:$false
+                Unregister-ScheduledTask -TaskName 'RDPControl Watchdog' -TaskPath '\RDPControl\' -Confirm:$false
             }
 
             $registerParams = @{

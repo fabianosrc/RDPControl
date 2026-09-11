@@ -17,6 +17,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - External Pester module dependency declared in manifest
 
 ### Added
+- `Invoke-RdpWatchdog` — runs one watchdog cycle on demand and re-applies
+  enforcement when the state has drifted. The watchdog task now executes this cmdlet
+- `Get-RdpWatchdogStatus` — new `LastResult` property derived from the task's
+  `LastTaskResult` (`Success`, `Running`, `NeverRun`, `Failed (0x...)`)
 - `Get-RdpSnapshot -All` — includes enforced snapshots in listing (hidden by default)
 - `Set-RdpService` — now synchronizes Windows Settings UI toggle via
   `Win32_TerminalServiceSetting.SetAllowTSConnections` (WSMan/DCOM/Registry fallback chain)
@@ -48,6 +52,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   category, and target object from engine layer
 
 ### Fixed
+- `Start-RdpWatchdog` — the task never re-applied enforcement: it called the
+  private `Test-EnforcementState` / `Invoke-Enforcement` (not exported, so
+  CommandNotFound in the task process) and did not suppress the High-impact
+  confirmation that `-NonInteractive` turns into an error. The task now runs
+  `Invoke-RdpWatchdog -Confirm:$false` with `$ErrorActionPreference = 'Stop'`
+- `Set-RdpSessionMode` / `Restore-RdpSnapshot` — the nested `Invoke-Enforcement` /
+  `Undo-Enforcement` prompt no longer asks a second time
 - `Start-RdpWatchdog` — the watchdog never fired: the Windows Update event
   subscription (Event ID 19/20 from `WindowsUpdateClient/Operational`) did not
   reliably raise for the servicing operations that revert enforcement. The task
