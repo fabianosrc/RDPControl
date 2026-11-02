@@ -222,7 +222,7 @@ function Set-RdpSessionMode {
             }
 
             try {
-                $result = Invoke-Enforcement
+                $result = Invoke-Enforcement -Confirm:$false
             } catch {
                 if ($_ -is [System.Management.Automation.ErrorRecord]) {
                     $PSCmdlet.ThrowTerminatingError($_)
@@ -255,7 +255,7 @@ function Set-RdpSessionMode {
             }
 
             try {
-                $result = Undo-Enforcement
+                $result = Undo-Enforcement -Confirm:$false
             } catch {
                 if ($_ -is [System.Management.Automation.ErrorRecord]) {
                     $PSCmdlet.ThrowTerminatingError($_)

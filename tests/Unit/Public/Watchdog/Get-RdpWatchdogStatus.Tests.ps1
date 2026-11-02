@@ -36,6 +36,7 @@ Describe 'Get-RdpWatchdogStatus' {
             $result.Status | Should -Be 'NotRegistered'
             $result.LastRun | Should -BeNullOrEmpty
             $result.NextRun | Should -BeNullOrEmpty
+            $result.LastResult | Should -BeNullOrEmpty
         }
 
         It 'Does not call Get-WatchdogTaskInfo' {
@@ -206,6 +207,79 @@ Describe 'Get-RdpWatchdogStatus' {
         }
     }
 
+    Context 'Last result mapping' {
+
+        BeforeEach {
+            Mock Get-WatchdogTask {
+                [PSCustomObject]@{
+                    State = 'Ready'
+                }
+            }
+        }
+
+        It 'Maps 0 to Success' {
+            Mock Get-WatchdogTaskInfo {
+                [PSCustomObject]@{ LastTaskResult = [uint32]0 }
+            }
+
+            (Get-RdpWatchdogStatus).LastResult | Should -Be 'Success'
+        }
+
+        It 'Maps 0x41301 to Running' {
+            Mock Get-WatchdogTaskInfo {
+                [PSCustomObject]@{ LastTaskResult = [uint32]267009 }
+            }
+
+            (Get-RdpWatchdogStatus).LastResult | Should -Be 'Running'
+        }
+
+        It 'Maps 0x41303 to NeverRun' {
+            Mock Get-WatchdogTaskInfo {
+                [PSCustomObject]@{ LastTaskResult = [uint32]267011 }
+            }
+
+            (Get-RdpWatchdogStatus).LastResult | Should -Be 'NeverRun'
+        }
+
+        It 'Maps a PowerShell exit code to Failed with the hex code' {
+            Mock Get-WatchdogTaskInfo {
+                [PSCustomObject]@{ LastTaskResult = [uint32]1 }
+            }
+
+            (Get-RdpWatchdogStatus).LastResult | Should -Be 'Failed (0x1)'
+        }
+
+        It 'Maps an HRESULT to Failed with the hex code' {
+            Mock Get-WatchdogTaskInfo {
+                [PSCustomObject]@{ LastTaskResult = [uint32]2147942402 }
+            }
+
+            (Get-RdpWatchdogStatus).LastResult | Should -Be 'Failed (0x80070002)'
+        }
+
+        It 'Returns null LastResult when the property is missing' {
+            Mock Get-WatchdogTaskInfo {
+                [PSCustomObject]@{ LastRunTime = [datetime]'2026-01-01' }
+            }
+
+            (Get-RdpWatchdogStatus).LastResult | Should -BeNullOrEmpty
+        }
+
+        It 'Returns null LastResult when the value is null' {
+            Mock Get-WatchdogTaskInfo {
+                [PSCustomObject]@{ LastTaskResult = $null }
+            }
+
+            (Get-RdpWatchdogStatus).LastResult | Should -BeNullOrEmpty
+        }
+
+        It 'Returns null LastResult when task info object is null' {
+            Mock Get-WatchdogTaskInfo { $null }
+
+            (Get-RdpWatchdogStatus).LastResult | Should -BeNullOrEmpty
+        }
+    }
+
     Context 'Error handling' {
 
         It 'Handles Get-WatchdogTask failure' {
@@ -247,6 +321,7 @@ Describe 'Get-RdpWatchdogStatus' {
             $result.PSObject.Properties.Name | Should -Contain 'Status'
             $result.PSObject.Properties.Name | Should -Contain 'LastRun'
             $result.PSObject.Properties.Name | Should -Contain 'NextRun'
+            $result.PSObject.Properties.Name | Should -Contain 'LastResult'
             $result.PSObject.Properties.Name | Should -Contain 'CheckedAt'
         }
 

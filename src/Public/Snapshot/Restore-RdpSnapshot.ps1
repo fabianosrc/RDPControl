@@ -110,7 +110,7 @@ function Restore-RdpSnapshot {
 
         Write-Verbose -Message "Restoring snapshot ID $($snapshotRecord.id)."
 
-        $result = Undo-Enforcement -SnapshotId $snapshotRecord.id
+        $result = Undo-Enforcement -SnapshotId $snapshotRecord.id -Confirm:$false
 
         return [PSCustomObject]@{
             PSTypeName = 'RDPControl.RestoreResult'

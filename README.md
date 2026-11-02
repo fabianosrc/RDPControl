@@ -317,15 +317,21 @@ Restore-RdpSnapshot -Id 1
 
 The watchdog is a Windows Scheduled Task (`\RDPControl\RDPControl Watchdog`)
 that runs under the `SYSTEM` account. It is triggered at system startup (30
-seconds after boot) and re-applies enforcement automatically if changes are
-detected. Booting is used as the trigger because every change that reverts
-enforcement — Windows Update servicing in particular — ends in a restart.
+seconds after boot) and runs `Invoke-RdpWatchdog`, which re-applies enforcement
+automatically if the enforcement state has drifted. Booting is used as the
+trigger because every change that reverts enforcement — Windows Update servicing
+in particular — ends in a restart.
+
+The module must be loaded from a local path when the watchdog is started: the
+task imports the module from that location, and the `SYSTEM` account cannot
+reach network shares or `\\wsl.localhost` paths at boot.
 
 | Cmdlet | Description |
 |---|---|
 | `Start-RdpWatchdog` | Registers the watchdog scheduled task. Requires active enforcement. |
 | `Stop-RdpWatchdog` | Unregisters the watchdog scheduled task. |
-| `Get-RdpWatchdogStatus` | Returns the registration state and last run time. |
+| `Invoke-RdpWatchdog` | Runs one watchdog cycle now. Re-applies enforcement if the state has drifted. This is what the scheduled task executes at boot. |
+| `Get-RdpWatchdogStatus` | Returns the registration state, the last run time and the outcome of the last run (`LastResult`). |
 
 ```powershell
 Set-RdpSessionMode -Enabled
@@ -418,6 +424,24 @@ The `tools\private\` scripts can also be run independently:
 # Build artifact only
 .\tools\private\Build.ps1 -SkipLint -SkipTests
 ```
+
+### Verifying the watchdog
+
+The watchdog is the only part of the module that runs unattended, and the unit
+tests mock the `ScheduledTasks` cmdlets. Verify it on a real machine (elevated)
+after changing the task definition:
+
+```powershell
+Set-RdpSessionMode -Enabled          # enforcement must be active to register the watchdog
+Start-RdpWatchdog
+Set-RdpSessionMode -Disabled -Force  # simulate enforcement being reverted
+Start-ScheduledTask -TaskPath '\RDPControl\' -TaskName 'RDPControl Watchdog'   # or reboot and wait ~30 s
+
+Get-RdpSessionMode                   # PASS = Enforced True
+Get-RdpWatchdogStatus                # LastResult = Success
+```
+
+`Invoke-RdpWatchdog` runs the same cycle in your console with errors visible.
 
 ---
 

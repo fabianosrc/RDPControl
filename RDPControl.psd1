@@ -80,6 +80,7 @@
         'Remove-RdpSnapshot',
         'Restore-RdpSnapshot',
         'Get-RdpWatchdogStatus',
+        'Invoke-RdpWatchdog',
         'Start-RdpWatchdog',
         'Stop-RdpWatchdog'
     )
