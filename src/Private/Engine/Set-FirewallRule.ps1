@@ -62,29 +62,33 @@ function Set-FirewallRule {
             # -------------------------
             # 1. Collect existing rules
             # -------------------------
-            $existingRules = @(
-                Get-FirewallRule -DisplayName $RuleName -ErrorAction SilentlyContinue
-            )
+            $existingRules = @(Get-FirewallRule -DisplayName $RuleName -ErrorAction Stop)
 
             # ----------------------------------------
             # 2. Evaluate compliance (drift detection)
             # ----------------------------------------
-            $isCompliant = Test-FirewallRuleCompliant -Rules $existingRules -DesiredState $desiredState
+            $rulesParams = @{
+                Rules        = $existingRules
+                DesiredState = $desiredState
+            }
+
+            $isCompliant = Test-FirewallRuleCompliant @rulesParams
 
             if ($isCompliant) {
                 Write-Verbose -Message (
-                    "Firewall rule '$RuleName' is already compliant for port $Port. No changes needed."
+                    "Firewall rule '$RuleName' is already compliant " +
+                    "for port $Port. No changes needed."
                 )
+
                 return
             }
 
             # ------------------------------
             # 3. Remediate (remove + create)
             # ------------------------------
-            if (-not $PSCmdlet.ShouldProcess(
-                $RuleName,
-                "Apply firewall rule for TCP port $Port"
-            )) {
+            if (-not $PSCmdlet.ShouldProcess($RuleName,
+                "Apply firewall rule for TCP port $Port")
+            ) {
                 return
             }
 
