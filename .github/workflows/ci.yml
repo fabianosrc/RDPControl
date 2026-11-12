@@ -1,0 +1,485 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RDPCONTROL_PESTER_VERSION: '6.2.0'
+  RDPCONTROL_ANALYZER_VERSION: '1.25.0'
+
+jobs:
+
+  # ==========================================================================
+  # PowerShell 5.1
+  # ==========================================================================
+  powershell-5-1:
+    name: CI / PowerShell 5.1
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        shell: powershell
+
+    steps:
+
+      # ----------------------------------------------------------------------
+      # Checkout
+      # ----------------------------------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ----------------------------------------------------------------------
+      # Environment
+      # ----------------------------------------------------------------------
+      - name: Show environment
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          Write-Host '========================================'
+          Write-Host 'RDPControl CI - PowerShell 5.1'
+          Write-Host '========================================'
+
+          $PSVersionTable | Format-List
+
+          Write-Host "Working directory: $(Get-Location)"
+
+      # ----------------------------------------------------------------------
+      # Prepare PowerShell Gallery
+      # ----------------------------------------------------------------------
+      - name: Prepare PowerShell Gallery
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          [Net.ServicePointManager]::SecurityProtocol = (
+            [Net.ServicePointManager]::SecurityProtocol -bor
+            [Net.SecurityProtocolType]::Tls12
+          )
+
+          $provider = Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue
+
+          if (-not $provider) {
+            $providerParams = @{
+              Name           = 'NuGet'
+              MinimumVersion = '2.8.5.201'
+              Scope          = 'CurrentUser'
+              Force          = $true
+            }
+
+            Install-PackageProvider @providerParams
+          }
+
+          $repositoryParams = @{
+            Name               = 'PSGallery'
+            InstallationPolicy = 'Trusted'
+          }
+
+          Set-PSRepository @repositoryParams
+
+      # ----------------------------------------------------------------------
+      # Install Pester
+      # ----------------------------------------------------------------------
+      - name: Install Pester
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $version = [version]$env:RDPCONTROL_PESTER_VERSION
+
+          $installed = Get-Module -Name Pester -ListAvailable |
+            Where-Object { $_.Version -eq $version } |
+            Select-Object -First 1
+
+          if (-not $installed) {
+            $installParams = @{
+              Name               = 'Pester'
+              RequiredVersion    = $version.ToString()
+              Scope              = 'CurrentUser'
+              Force              = $true
+              SkipPublisherCheck = $true
+              AllowClobber       = $true
+              ErrorAction        = 'Stop'
+            }
+
+            Install-Module @installParams
+          }
+
+          $importParams = @{
+            Name            = 'Pester'
+            RequiredVersion = $version.ToString()
+            Force           = $true
+            ErrorAction     = 'Stop'
+          }
+
+          Import-Module @importParams
+
+          Write-Host "Using Pester $((Get-Module -Name Pester).Version)"
+
+      # ----------------------------------------------------------------------
+      # Install PSScriptAnalyzer
+      # ----------------------------------------------------------------------
+      - name: Install PSScriptAnalyzer
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $version = [version]$env:RDPCONTROL_ANALYZER_VERSION
+
+          $installed = Get-Module -Name PSScriptAnalyzer -ListAvailable |
+            Where-Object { $_.Version -eq $version } |
+            Select-Object -First 1
+
+          if (-not $installed) {
+            $installParams = @{
+              Name            = 'PSScriptAnalyzer'
+              RequiredVersion = $version.ToString()
+              Scope           = 'CurrentUser'
+              Force           = $true
+              AllowClobber    = $true
+              ErrorAction     = 'Stop'
+            }
+
+            Install-Module @installParams
+          }
+
+          $importParams = @{
+            Name            = 'PSScriptAnalyzer'
+            RequiredVersion = $version.ToString()
+            Force           = $true
+            ErrorAction     = 'Stop'
+          }
+
+          Import-Module @importParams
+
+          Write-Host "Using PSScriptAnalyzer $((Get-Module -Name PSScriptAnalyzer).Version)"
+
+      # ----------------------------------------------------------------------
+      # Validate module manifest
+      # ----------------------------------------------------------------------
+      - name: Validate module manifest
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $manifest = Join-Path $PWD 'RDPControl.psd1'
+
+          if (-not (Test-Path -LiteralPath $manifest)) {
+            throw "Module manifest not found: $manifest"
+          }
+
+          Test-ModuleManifest -Path $manifest -ErrorAction Stop | Out-Null
+
+          Write-Host 'Module manifest validated.'
+
+      # ----------------------------------------------------------------------
+      # Lint
+      # ----------------------------------------------------------------------
+      - name: Lint
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $script = Join-Path $PWD 'tools\Invoke-Lint.ps1'
+
+          if (-not (Test-Path -LiteralPath $script)) {
+            throw "Lint script not found: $script"
+          }
+
+          $lintParams = @{
+            Strict = $true
+          }
+
+          & $script @lintParams
+
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+      # ----------------------------------------------------------------------
+      # Tests
+      # ----------------------------------------------------------------------
+      - name: Tests
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $script = Join-Path $PWD 'tools\Invoke-Tests.ps1'
+
+          if (-not (Test-Path -LiteralPath $script)) {
+            throw "Test script not found: $script"
+          }
+
+          $testParams = @{
+            Coverage       = $true
+            CoverageTarget = 80
+          }
+
+          & $script @testParams
+
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+      # ----------------------------------------------------------------------
+      # Upload test results
+      # ----------------------------------------------------------------------
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-ps5.1
+          path: output/test-results/TestResults.NUnitXml.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+      # ----------------------------------------------------------------------
+      # Upload coverage
+      # ----------------------------------------------------------------------
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-ps5.1
+          path: output/coverage/coverage.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+  # ==========================================================================
+  # PowerShell 7
+  # ==========================================================================
+  powershell-7:
+    name: CI / PowerShell 7
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+
+      # ----------------------------------------------------------------------
+      # Checkout
+      # ----------------------------------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ----------------------------------------------------------------------
+      # Environment
+      # ----------------------------------------------------------------------
+      - name: Show environment
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          Write-Host '========================================'
+          Write-Host 'RDPControl CI - PowerShell 7'
+          Write-Host '========================================'
+
+          $PSVersionTable | Format-List
+
+          Write-Host "Working directory: $(Get-Location)"
+
+      # ----------------------------------------------------------------------
+      # Prepare PowerShell Gallery
+      # ----------------------------------------------------------------------
+      - name: Prepare PowerShell Gallery
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          [Net.ServicePointManager]::SecurityProtocol = (
+            [Net.ServicePointManager]::SecurityProtocol -bor
+            [Net.SecurityProtocolType]::Tls12
+          )
+
+          $provider = Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue
+
+          if (-not $provider) {
+            $providerParams = @{
+              Name           = 'NuGet'
+              MinimumVersion = '2.8.5.201'
+              Scope          = 'CurrentUser'
+              Force          = $true
+            }
+
+            Install-PackageProvider @providerParams
+          }
+
+          $repositoryParams = @{
+            Name               = 'PSGallery'
+            InstallationPolicy = 'Trusted'
+          }
+
+          Set-PSRepository @repositoryParams
+
+      # ----------------------------------------------------------------------
+      # Install Pester
+      # ----------------------------------------------------------------------
+      - name: Install Pester
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $version = [version]$env:RDPCONTROL_PESTER_VERSION
+
+          $installed = Get-Module -Name Pester -ListAvailable |
+            Where-Object { $_.Version -eq $version } |
+            Select-Object -First 1
+
+          if (-not $installed) {
+            $installParams = @{
+              Name               = 'Pester'
+              RequiredVersion    = $version.ToString()
+              Scope              = 'CurrentUser'
+              Force              = $true
+              SkipPublisherCheck = $true
+              AllowClobber       = $true
+              ErrorAction        = 'Stop'
+            }
+
+            Install-Module @installParams
+          }
+
+          $importParams = @{
+            Name            = 'Pester'
+            RequiredVersion = $version.ToString()
+            Force           = $true
+            ErrorAction     = 'Stop'
+          }
+
+          Import-Module @importParams
+
+          Write-Host "Using Pester $((Get-Module -Name Pester).Version)"
+
+      # ----------------------------------------------------------------------
+      # Install PSScriptAnalyzer
+      # ----------------------------------------------------------------------
+      - name: Install PSScriptAnalyzer
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $version = [version]$env:RDPCONTROL_ANALYZER_VERSION
+
+          $installed = Get-Module -Name PSScriptAnalyzer -ListAvailable |
+            Where-Object { $_.Version -eq $version } |
+            Select-Object -First 1
+
+          if (-not $installed) {
+            $installParams = @{
+              Name            = 'PSScriptAnalyzer'
+              RequiredVersion = $version.ToString()
+              Scope           = 'CurrentUser'
+              Force           = $true
+              AllowClobber    = $true
+              ErrorAction     = 'Stop'
+            }
+
+            Install-Module @installParams
+          }
+
+          $importParams = @{
+            Name            = 'PSScriptAnalyzer'
+            RequiredVersion = $version.ToString()
+            Force           = $true
+            ErrorAction     = 'Stop'
+          }
+
+          Import-Module @importParams
+
+          Write-Host "Using PSScriptAnalyzer $((Get-Module -Name PSScriptAnalyzer).Version)"
+
+      # ----------------------------------------------------------------------
+      # Validate module manifest
+      # ----------------------------------------------------------------------
+      - name: Validate module manifest
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $manifest = Join-Path $PWD 'RDPControl.psd1'
+
+          if (-not (Test-Path -LiteralPath $manifest)) {
+            throw "Module manifest not found: $manifest"
+          }
+
+          Test-ModuleManifest -Path $manifest -ErrorAction Stop | Out-Null
+
+          Write-Host 'Module manifest validated.'
+
+      # ----------------------------------------------------------------------
+      # Lint
+      # ----------------------------------------------------------------------
+      - name: Lint
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $script = Join-Path $PWD 'tools\Invoke-Lint.ps1'
+
+          if (-not (Test-Path -LiteralPath $script)) {
+            throw "Lint script not found: $script"
+          }
+
+          $lintParams = @{
+            Strict = $true
+          }
+
+          & $script @lintParams
+
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+      # ----------------------------------------------------------------------
+      # Tests
+      # ----------------------------------------------------------------------
+      - name: Tests
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $script = Join-Path $PWD 'tools\Invoke-Tests.ps1'
+
+          if (-not (Test-Path -LiteralPath $script)) {
+            throw "Test script not found: $script"
+          }
+
+          $testParams = @{
+            Coverage       = $true
+            CoverageTarget = 80
+          }
+
+          & $script @testParams
+
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+      # ----------------------------------------------------------------------
+      # Upload test results
+      # ----------------------------------------------------------------------
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-ps7
+          path: output/test-results/TestResults.NUnitXml.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+      # ----------------------------------------------------------------------
+      # Upload coverage
+      # ----------------------------------------------------------------------
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-ps7
+          path: output/coverage/coverage.xml
+          if-no-files-found: warn
+          retention-days: 14
