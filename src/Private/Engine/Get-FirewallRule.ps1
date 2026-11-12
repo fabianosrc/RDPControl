@@ -9,6 +9,9 @@ specified display name.
 Exists as a wrapper to isolate NetSecurity dependencies from business
 logic and allow unit testing without a live firewall.
 
+Returns no objects when no matching rule exists. Errors unrelated to a
+missing rule are propagated to the caller.
+
 .PARAMETER DisplayName
 Display name of the firewall rule to retrieve.
 
@@ -31,6 +34,28 @@ function Get-FirewallRule {
     )
 
     process {
-        Get-NetFirewallRule -DisplayName $DisplayName
+        try {
+            Get-NetFirewallRule -DisplayName $DisplayName -ErrorAction Stop
+        } catch {
+            $isNotFound = (
+                $_.CategoryInfo.Category -eq
+                [System.Management.Automation.ErrorCategory]::ObjectNotFound
+            )
+
+            $isDisplayNameLookup = (
+                $_.FullyQualifiedErrorId -like
+                'CmdletizationQuery_NotFound_DisplayName*'
+            )
+
+            if ($isNotFound -and $isDisplayNameLookup) {
+                Write-Verbose -Message (
+                    "Firewall rule '$DisplayName' was not found."
+                )
+
+                return
+            }
+
+            throw
+        }
     }
 }
