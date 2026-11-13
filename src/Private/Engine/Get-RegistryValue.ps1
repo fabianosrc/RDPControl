@@ -111,7 +111,7 @@ function Get-RegistryValue {
         # -----------------------------
         # 3. Validate property existence
         # -----------------------------
-        $hasProperty = $item.PSObject.Properties.Name -contains $Name
+        $hasProperty = $null -ne $item.PSObject.Properties[$Name]
 
         if (-not $hasProperty) {
             if ($Strict) {
@@ -133,6 +133,6 @@ function Get-RegistryValue {
         # -----------------------------
         # 4. Return value
         # -----------------------------
-        return $item.$Name
+        return $item.PSObject.Properties[$Name].Value
     }
 }
