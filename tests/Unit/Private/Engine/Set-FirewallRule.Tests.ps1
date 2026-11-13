@@ -1,5 +1,4 @@
-﻿
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '5.0.0' }
 
 <#
@@ -13,29 +12,27 @@ No real firewall changes are performed.
 
 Coverage includes:
   - Parameter validation and boundaries.
-  - Rule lookup and error handling.
+  - Rule lookup by internal name and error handling.
   - Idempotency for compliant rules.
-  - Rule creation when no match exists.
-  - Creation parameters and custom rule names.
-  - Replacement of non-compliant rules.
-  - Removal of the original rule object.
-  - Removal-before-creation ordering.
+  - Rule creation when no managed rule exists.
+  - Creation parameters and custom display names.
+  - Rule update when managed rule is non-compliant.
   - WhatIf behavior.
   - Lookup failure safety.
-  - Creation and removal failure handling.
+  - Creation and update failure handling.
   - Absence of unintended operations.
   - Verbose diagnostic messages.
 
 .NOTES
-Remove-NetFirewallRule requires a strongly typed CIM object for
-InputObject. Its mock uses RemoveParameterType so unit tests can
-supply synthetic rule objects without accessing the real firewall.
+Get-RulePortFilter requires a CIM object for AssociatedNetFirewallRule.
+Its mock uses RemoveParameterType so unit tests can supply synthetic
+rule objects without accessing the real firewall.
 #>
 
-# InModuleScope needs to resolve the PipeDFe module during the Discovery phase,
-# because that's when Context/It are executed to register the test tree. If the
-# module isn't loaded at that point, InModuleScope fails before any BeforeAll or
-# BeforeEach ever runs.
+# InModuleScope needs to resolve the RDPControl module during the Discovery
+# phase, because that's when Context/It are executed to register the test
+# tree. If the module isn't loaded at that point, InModuleScope fails before
+# any BeforeAll or BeforeEach ever runs.
 BeforeDiscovery {
     $moduleRoot = (Get-Item -LiteralPath $PSScriptRoot).Parent.Parent.Parent.Parent.FullName
 
@@ -50,21 +47,36 @@ Describe 'Set-FirewallRule' -Tag 'Unit' {
 
         BeforeAll {
 
-            $Script:RuleName = 'Remote Desktop Connection'
+            $Script:RuleName    = 'Remote Desktop Connection'
             $Script:DefaultPort = 3389
+            $Script:ManagedName = 'RDPControl-RDP-Rule'
 
-            $Script:ExistingRule = [PSCustomObject]@{
-                Name        = 'RDPControl-ExistingRule'
-                DisplayName = 'Remote Desktop Connection'
+            $Script:ManagedRule = [PSCustomObject]@{
+                Name        = $Script:ManagedName
+                DisplayName = $Script:RuleName
                 Enabled     = 'False'
                 Direction   = 'Inbound'
                 Action      = 'Allow'
+            }
+
+            $Script:UpdatedRule = [PSCustomObject]@{
+                Name        = $Script:ManagedName
+                DisplayName = $Script:RuleName
+                Enabled     = 'True'
+                Direction   = 'Inbound'
+                Action      = 'Allow'
+            }
+
+            $Script:PortFilter = [PSCustomObject]@{
+                Protocol  = 'TCP'
+                LocalPort = '3389'
             }
         }
 
         BeforeEach {
 
             $Script:OperationOrder = [System.Collections.Generic.List[string]]::new()
+            $Script:LookupCount    = 0
 
             Mock -CommandName Get-FirewallRule -MockWith {
                 @()
@@ -78,7 +90,19 @@ Describe 'Set-FirewallRule' -Tag 'Unit' {
                 [void]$Script:OperationOrder.Add('New')
             }
 
-            $mockParams = @{
+            Mock -CommandName Set-NetFirewallRule -MockWith {
+                [void]$Script:OperationOrder.Add('Set')
+            }
+
+            $portFilterMock = @{
+                CommandName         = 'Get-RulePortFilter'
+                RemoveParameterType = 'InputObject'
+                MockWith            = { $Script:PortFilter }
+            }
+
+            Mock @portFilterMock
+
+            $removeRuleMock = @{
                 CommandName         = 'Remove-NetFirewallRule'
                 RemoveParameterType = 'InputObject'
                 MockWith            = {
@@ -86,7 +110,7 @@ Describe 'Set-FirewallRule' -Tag 'Unit' {
                 }
             }
 
-            Mock @mockParams
+            Mock @removeRuleMock
         }
 
         #region Parameter validation
@@ -136,15 +160,20 @@ Describe 'Set-FirewallRule' -Tag 'Unit' {
         #region Rule lookup
         Context 'Rule lookup' {
 
-            It 'Uses the default firewall rule name' {
+            It 'Looks up the managed rule by internal name' {
                 Set-FirewallRule -Port $Script:DefaultPort -Confirm:$false
 
-                Should -Invoke Get-FirewallRule -Times 1 -Exactly -ParameterFilter {
-                    $DisplayName -eq 'Remote Desktop Connection'
+                $invokeParams = @{
+                    CommandName     = 'Get-FirewallRule'
+                    Times           = 1
+                    Exactly         = $true
+                    ParameterFilter = { $Name -eq 'RDPControl-RDP-Rule' }
                 }
+
+                Should -Invoke @invokeParams
             }
 
-            It 'Supports a custom firewall rule name' {
+            It 'Supports a custom firewall rule display name' {
                 $ruleParams = @{
                     Port     = $Script:DefaultPort
                     RuleName = 'RDPControl Custom Rule'
@@ -152,10 +181,6 @@ Describe 'Set-FirewallRule' -Tag 'Unit' {
                 }
 
                 Set-FirewallRule @ruleParams
-
-                Should -Invoke Get-FirewallRule -Times 1 -Exactly -ParameterFilter {
-                    $DisplayName -eq 'RDPControl Custom Rule'
-                }
 
                 Should -Invoke New-NetFirewallRule -Times 1 -Exactly -ParameterFilter {
                     $DisplayName -eq 'RDPControl Custom Rule'
@@ -165,15 +190,42 @@ Describe 'Set-FirewallRule' -Tag 'Unit' {
             It 'Requests terminating error behavior during lookup' {
                 Set-FirewallRule -Port $Script:DefaultPort -Confirm:$false
 
-                Should -Invoke Get-FirewallRule -Times 1 -Exactly -ParameterFilter {
-                    $ErrorAction -eq 'Stop'
+                $invokeParams = @{
+                    CommandName     = 'Get-FirewallRule'
+                    Times           = 1
+                    Exactly         = $true
+                    ParameterFilter = { $ErrorAction -eq 'Stop' }
                 }
+
+                Should -Invoke @invokeParams
             }
 
-            It 'Evaluates the returned rule collection once' {
+            It 'Evaluates compliance when a managed rule exists' {
+                Mock -CommandName Get-FirewallRule -MockWith {
+                    $Script:LookupCount++
+
+                    if ($Script:LookupCount -eq 1) {
+                        $Script:ManagedRule
+                    } else {
+                        $Script:UpdatedRule
+                    }
+                }
+
+                Mock -CommandName Test-FirewallRuleCompliant -MockWith {
+                    $Script:LookupCount -gt 1
+                }
+
                 Set-FirewallRule -Port $Script:DefaultPort -Confirm:$false
 
-                Should -Invoke Test-FirewallRuleCompliant -Times 1 -Exactly
+                # Implementation evaluates compliance twice: once before the
+                # update (non-compliant) and once after (post-update validation).
+                Should -Invoke Test-FirewallRuleCompliant -Times 2 -Exactly
+            }
+
+            It 'Does not evaluate compliance when no rule exists' {
+                Set-FirewallRule -Port $Script:DefaultPort -Confirm:$false
+
+                Should -Invoke Test-FirewallRuleCompliant -Times 0 -Exactly
             }
         }
         #endregion
@@ -184,7 +236,7 @@ Describe 'Set-FirewallRule' -Tag 'Unit' {
             BeforeEach {
 
                 Mock -CommandName Get-FirewallRule -MockWith {
-                    $Script:ExistingRule
+                    $Script:ManagedRule
                 }
 
                 Mock -CommandName Test-FirewallRuleCompliant -MockWith {
@@ -196,6 +248,12 @@ Describe 'Set-FirewallRule' -Tag 'Unit' {
                 Set-FirewallRule -Port $Script:DefaultPort -Confirm:$false
 
                 Should -Invoke New-NetFirewallRule -Times 0 -Exactly
+            }
+
+            It 'Does not update a compliant rule' {
+                Set-FirewallRule -Port $Script:DefaultPort -Confirm:$false
+
+                Should -Invoke Set-NetFirewallRule -Times 0 -Exactly
             }
 
             It 'Does not remove a compliant rule' {
@@ -229,15 +287,16 @@ Describe 'Set-FirewallRule' -Tag 'Unit' {
         #region Rule creation
         Context 'Rule creation' {
 
-            It 'Creates exactly one rule when no matching rule exists' {
+            It 'Creates exactly one rule when no managed rule exists' {
                 Set-FirewallRule -Port $Script:DefaultPort -Confirm:$false
 
                 Should -Invoke New-NetFirewallRule -Times 1 -Exactly
             }
 
-            It 'Does not remove a rule when no matching rule exists' {
+            It 'Does not update or remove when creating a new rule' {
                 Set-FirewallRule -Port $Script:DefaultPort -Confirm:$false
 
+                Should -Invoke Set-NetFirewallRule    -Times 0 -Exactly
                 Should -Invoke Remove-NetFirewallRule -Times 0 -Exactly
             }
 
@@ -245,10 +304,15 @@ Describe 'Set-FirewallRule' -Tag 'Unit' {
                 Set-FirewallRule -Port $Script:DefaultPort -Confirm:$false
 
                 Should -Invoke New-NetFirewallRule -Times 1 -Exactly -ParameterFilter {
+                    $Name        -eq 'RDPControl-RDP-Rule'       -and
                     $DisplayName -eq 'Remote Desktop Connection' -and
-                    $Direction   -eq 'Inbound' -and $Protocol -eq 'TCP'   -and
-                    $LocalPort   -eq 3389      -and $Action   -eq 'Allow' -and
-                    $Enabled     -eq 'True'    -and $Profile  -eq 'Any'
+                    $Direction   -eq 'Inbound'                   -and
+                    $Protocol    -eq 'TCP'                       -and
+                    $LocalPort   -eq 3389                        -and
+                    $Action      -eq 'Allow'                     -and
+                    $Enabled     -eq 'True'                      -and
+                    $Profile     -eq 'Any'                       -and
+                    $PolicyStore -eq 'PersistentStore'
                 }
             }
 
@@ -268,85 +332,104 @@ Describe 'Set-FirewallRule' -Tag 'Unit' {
         }
         #endregion
 
-        #region Rule replacement
-        Context 'Rule replacement' {
+        #region Rule update
+        Context 'Rule update' {
 
             BeforeEach {
 
                 Mock -CommandName Get-FirewallRule -MockWith {
-                    $Script:ExistingRule
-                }
+                    $Script:LookupCount++
 
-                Mock -CommandName Test-FirewallRuleCompliant -MockWith {
-                    $false
-                }
-            }
-
-            It 'Removes exactly one non-compliant rule' {
-                Set-FirewallRule -Port $Script:DefaultPort -Confirm:$false
-
-                Should -Invoke Remove-NetFirewallRule -Times 1 -Exactly
-            }
-
-            It 'Creates exactly one replacement rule' {
-                Set-FirewallRule -Port $Script:DefaultPort -Confirm:$false
-
-                Should -Invoke New-NetFirewallRule -Times 1 -Exactly
-            }
-
-            It 'Passes the original rule object to removal' {
-                Set-FirewallRule -Port $Script:DefaultPort -Confirm:$false
-
-                Should -Invoke Remove-NetFirewallRule -Times 1 -Exactly -ParameterFilter {
-                    [object]::ReferenceEquals(
-                        $InputObject,
-                        $Script:ExistingRule
-                    )
-                }
-            }
-
-            It 'Removes the existing rule before creating the replacement' {
-                Set-FirewallRule -Port $Script:DefaultPort -Confirm:$false
-
-                $Script:OperationOrder | Should -Be @('Remove', 'New')
-            }
-
-            It 'Creates the replacement using the requested port' {
-                Set-FirewallRule -Port 3390 -Confirm:$false
-
-                $invokeParams = @{
-                    CommandName     = 'New-NetFirewallRule'
-                    Times           = 1
-                    Exactly         = $true
-                    ParameterFilter = {
-                        $LocalPort -eq 3390  -and $Direction -eq 'Inbound' -and
-                        $Protocol  -eq 'TCP' -and $Action     -eq 'Allow'
+                    if ($Script:LookupCount -eq 1) {
+                        $Script:ManagedRule
+                    } else {
+                        $Script:UpdatedRule
                     }
                 }
 
-                Should -Invoke @invokeParams
+                Mock -CommandName Test-FirewallRuleCompliant -MockWith {
+                    $Script:LookupCount -gt 1
+                }
             }
 
-            It 'Removes all matching rules when multiple non-compliant rules exist' {
-                $secondRule = [PSCustomObject]@{
-                    Name        = 'RDPControl-SecondRule'
-                    DisplayName = 'Remote Desktop Connection'
-                    Enabled     = 'False'
+            It 'Updates the managed rule when it is non-compliant' {
+                Set-FirewallRule -Port $Script:DefaultPort -Confirm:$false
+
+                Should -Invoke Set-NetFirewallRule -Times 1 -Exactly
+            }
+
+            It 'Does not create or remove when updating' {
+                Set-FirewallRule -Port $Script:DefaultPort -Confirm:$false
+
+                Should -Invoke New-NetFirewallRule    -Times 0 -Exactly
+                Should -Invoke Remove-NetFirewallRule -Times 0 -Exactly
+            }
+
+            It 'Updates using the managed name and PersistentStore' {
+                Set-FirewallRule -Port $Script:DefaultPort -Confirm:$false
+
+                Should -Invoke Set-NetFirewallRule -Times 1 -Exactly -ParameterFilter {
+                    $Name        -eq 'RDPControl-RDP-Rule' -and
+                    $PolicyStore -eq 'PersistentStore'
+                }
+            }
+
+            It 'Updates the port to the requested value' {
+                Set-FirewallRule -Port 3390 -Confirm:$false
+
+                Should -Invoke Set-NetFirewallRule -Times 1 -Exactly -ParameterFilter {
+                    $LocalPort -eq '3390'
+                }
+            }
+
+            It 'Uses the supplied RuleName as NewDisplayName on update' {
+                $updatedLabelRule = [PSCustomObject]@{
+                    Name        = $Script:ManagedName
+                    DisplayName = 'Updated RDP Label'
+                    Enabled     = 'True'
                     Direction   = 'Inbound'
                     Action      = 'Allow'
                 }
 
                 Mock -CommandName Get-FirewallRule -MockWith {
-                    $Script:ExistingRule
-                    $secondRule
+                    $Script:LookupCount++
+
+                    if ($Script:LookupCount -eq 1) {
+                        $Script:ManagedRule
+                    } else {
+                        $updatedLabelRule
+                    }
                 }
 
+                Mock -CommandName Test-FirewallRuleCompliant -MockWith {
+                    $Script:LookupCount -gt 1
+                }
+
+                $ruleParams = @{
+                    Port     = $Script:DefaultPort
+                    RuleName = 'Updated RDP Label'
+                    Confirm  = $false
+                }
+
+                Set-FirewallRule @ruleParams
+
+                Should -Invoke Set-NetFirewallRule -Times 1 -Exactly -ParameterFilter {
+                    $NewDisplayName -eq 'Updated RDP Label'
+                }
+            }
+
+            It 'Reads the port filter before updating' {
                 Set-FirewallRule -Port $Script:DefaultPort -Confirm:$false
 
-                Should -Invoke Remove-NetFirewallRule -Times 2 -Exactly
-                Should -Invoke New-NetFirewallRule    -Times 1 -Exactly
+                Should -Invoke Get-RulePortFilter -Times 1 -Exactly
+            }
 
-                $Script:OperationOrder | Should -Be @('Remove', 'Remove', 'New')
+            It 'Returns no output after successful update' {
+                $result = @(
+                    Set-FirewallRule -Port $Script:DefaultPort -Confirm:$false
+                )
+
+                $result | Should -HaveCount 0
             }
         }
         #endregion
@@ -360,9 +443,19 @@ Describe 'Set-FirewallRule' -Tag 'Unit' {
                 Should -Invoke New-NetFirewallRule -Times 0 -Exactly
             }
 
+            It 'Does not update a rule under WhatIf' {
+                Mock -CommandName Get-FirewallRule -MockWith {
+                    $Script:ManagedRule
+                }
+
+                Set-FirewallRule -Port $Script:DefaultPort -WhatIf
+
+                Should -Invoke Set-NetFirewallRule -Times 0 -Exactly
+            }
+
             It 'Does not remove a rule under WhatIf' {
                 Mock -CommandName Get-FirewallRule -MockWith {
-                    $Script:ExistingRule
+                    $Script:ManagedRule
                 }
 
                 Set-FirewallRule -Port $Script:DefaultPort -WhatIf
@@ -378,7 +471,7 @@ Describe 'Set-FirewallRule' -Tag 'Unit' {
 
             It 'Does not modify non-compliant rules under WhatIf' {
                 Mock -CommandName Get-FirewallRule -MockWith {
-                    $Script:ExistingRule
+                    $Script:ManagedRule
                 }
 
                 Set-FirewallRule -Port $Script:DefaultPort -WhatIf
@@ -412,11 +505,11 @@ Describe 'Set-FirewallRule' -Tag 'Unit' {
                 Should -Invoke New-NetFirewallRule -Times 0 -Exactly
             }
 
-            It 'Does not remove rules when lookup fails' {
+            It 'Does not update rules when lookup fails' {
                 { Set-FirewallRule -Port $Script:DefaultPort -Confirm:$false } |
                     Should -Throw
 
-                Should -Invoke Remove-NetFirewallRule -Times 0 -Exactly
+                Should -Invoke Set-NetFirewallRule -Times 0 -Exactly
             }
 
             It 'Does not evaluate compliance when lookup fails' {
@@ -469,40 +562,17 @@ Describe 'Set-FirewallRule' -Tag 'Unit' {
                 Should -Invoke Remove-NetFirewallRule -Times 0 -Exactly
             }
 
-            It 'Wraps rule removal failures with SetFirewallRuleFailed' {
+            It 'Wraps rule update failures with SetFirewallRuleFailed' {
                 Mock -CommandName Get-FirewallRule -MockWith {
-                    $Script:ExistingRule
+                    $Script:ManagedRule
                 }
 
-                $mockParams = @{
-                    CommandName         = 'Remove-NetFirewallRule'
-                    RemoveParameterType = 'InputObject'
-                    MockWith            = { throw 'Removal failed.' }
+                Mock -CommandName Set-NetFirewallRule -MockWith {
+                    throw 'Update failed.'
                 }
-
-                Mock @mockParams
 
                 { Set-FirewallRule -Port $Script:DefaultPort -Confirm:$false } |
                     Should -Throw -ErrorId 'SetFirewallRuleFailed,*'
-            }
-
-            It 'Does not create a replacement when removal fails' {
-                Mock -CommandName Get-FirewallRule -MockWith {
-                    $Script:ExistingRule
-                }
-
-                $mockParams = @{
-                    CommandName         = 'Remove-NetFirewallRule'
-                    RemoveParameterType = 'InputObject'
-                    MockWith            = { throw 'Removal failed.' }
-                }
-
-                Mock @mockParams
-
-                { Set-FirewallRule -Port $Script:DefaultPort -Confirm:$false } |
-                    Should -Throw
-
-                Should -Invoke New-NetFirewallRule -Times 0 -Exactly
             }
         }
         #endregion
@@ -512,7 +582,7 @@ Describe 'Set-FirewallRule' -Tag 'Unit' {
 
             It 'Writes a verbose message when the rule is compliant' {
                 Mock -CommandName Get-FirewallRule -MockWith {
-                    $Script:ExistingRule
+                    $Script:ManagedRule
                 }
 
                 Mock -CommandName Test-FirewallRuleCompliant -MockWith {
@@ -556,9 +626,19 @@ Describe 'Set-FirewallRule' -Tag 'Unit' {
                 ($messages -join "`n") | Should -Match 'Applied firewall rule'
             }
 
-            It 'Writes a verbose message when replacing a non-compliant rule' {
+            It 'Writes a verbose message when updating a non-compliant rule' {
                 Mock -CommandName Get-FirewallRule -MockWith {
-                    $Script:ExistingRule
+                    $Script:LookupCount++
+
+                    if ($Script:LookupCount -eq 1) {
+                        $Script:ManagedRule
+                    } else {
+                        $Script:UpdatedRule
+                    }
+                }
+
+                Mock -CommandName Test-FirewallRuleCompliant -MockWith {
+                    $Script:LookupCount -gt 1
                 }
 
                 $ruleParams = @{
@@ -572,10 +652,11 @@ Describe 'Set-FirewallRule' -Tag 'Unit' {
                         Where-Object {
                             $_ -is [System.Management.Automation.VerboseRecord]
                         } |
+
                         ForEach-Object Message
                 )
 
-                ($messages -join "`n") | Should -Match 'Removed non-compliant firewall rule'
+                ($messages -join "`n") | Should -Match 'Applied firewall rule'
             }
         }
         #endregion
