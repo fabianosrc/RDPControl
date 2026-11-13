@@ -1,21 +1,32 @@
 ﻿<#
 .SYNOPSIS
-Ensures a Windows Firewall rule exists and is consistent for a given TCP port.
+Ensures a managed firewall rule exists and matches the desired state
+for a given TCP port.
 
 .DESCRIPTION
-Creates or recreates an inbound TCP Allow firewall rule with the desired
-configuration. The function is fully idempotent: it evaluates drift across
-all matching rules before applying any change.
+Creates or updates the RDPControl-managed inbound TCP Allow firewall
+rule in the PersistentStore. The rule is identified by its internal
+name (RDPControl-RDP-Rule), which never changes regardless of the
+display name or port requested.
 
-Drift is detected when any existing rule deviates from the desired state
-in port, protocol, direction, action, or enabled status. Non-compliant
-rules are removed and recreated atomically.
+On creation, -RuleName is applied as the rule DisplayName.
+On update, -RuleName is applied as the new DisplayName via
+-NewDisplayName. Calling the function with a different -RuleName
+relabels the existing rule without creating a second one.
+
+The function is idempotent: when the existing rule already matches
+the desired state and display name, no changes are applied.
+
+When an update is required but fails, the function attempts to restore
+the previous state automatically. If restoration also fails, an
+AggregateException is thrown carrying both failures.
 
 .PARAMETER Port
 TCP port number to allow inbound traffic. Must be between 1024 and 65535.
 
 .PARAMETER RuleName
-Display name of the firewall rule.
+Display name for the firewall rule. Controls only the DisplayName
+property; the internal Name is always RDPControl-RDP-Rule.
 Defaults to 'Remote Desktop Connection'.
 
 .EXAMPLE
@@ -47,77 +58,166 @@ function Set-FirewallRule {
     )
 
     process {
+        $managedName = 'RDPControl-RDP-Rule'
+
+        $lookupParams = @{
+            Name        = $managedName
+            ErrorAction = 'Stop'
+        }
+
+        $desiredState = @{
+            Direction = 'Inbound'
+            Action    = 'Allow'
+            Enabled   = 'True'
+            Protocol  = 'TCP'
+            LocalPort = [string]$Port
+        }
+
         try {
-            # ------------------------
-            # Desired state definition
-            # ------------------------
-            $desiredState = @{
-                Direction = 'Inbound'
-                Action    = 'Allow'
-                Enabled   = 'True'
-                Protocol  = 'TCP'
-                LocalPort = [string]$Port
+            $existingRules = @(Get-FirewallRule @lookupParams)
+
+            if ($existingRules.Count -gt 1) {
+                throw "More than one local firewall rule matched '$managedName'."
             }
 
-            # -------------------------
-            # 1. Collect existing rules
-            # -------------------------
-            $existingRules = @(Get-FirewallRule -DisplayName $RuleName -ErrorAction Stop)
+            $hasRule = $existingRules.Count -eq 1
 
-            # ----------------------------------------
-            # 2. Evaluate compliance (drift detection)
-            # ----------------------------------------
-            $rulesParams = @{
-                Rules        = $existingRules
-                DesiredState = $desiredState
+            if ($hasRule) {
+                $existing = $existingRules[0]
+
+                $compliantParams = @{
+                    Rules        = $existingRules
+                    DesiredState = $desiredState
+                    ErrorAction  = 'Stop'
+                }
+
+                $isCompliant = Test-FirewallRuleCompliant @compliantParams
+
+                if ($isCompliant -and $existing.DisplayName -ceq $RuleName) {
+                    Write-Verbose -Message (
+                        "Firewall rule '$managedName' is already compliant."
+                    )
+
+                    return
+                }
             }
 
-            $isCompliant = Test-FirewallRuleCompliant @rulesParams
-
-            if ($isCompliant) {
-                Write-Verbose -Message (
-                    "Firewall rule '$RuleName' is already compliant " +
-                    "for port $Port. No changes needed."
-                )
-
-                return
-            }
-
-            # ------------------------------
-            # 3. Remediate (remove + create)
-            # ------------------------------
-            if (-not $PSCmdlet.ShouldProcess($RuleName,
+            if (-not $PSCmdlet.ShouldProcess($managedName,
                 "Apply firewall rule for TCP port $Port")
             ) {
                 return
             }
 
-            foreach ($rule in $existingRules) {
-                Remove-NetFirewallRule -InputObject $rule
-
-                Write-Verbose -Message "Removed non-compliant firewall rule '$RuleName'."
-            }
-
-            $newRuleParams = @{
-                DisplayName = $RuleName
+            $writeParams = @{
+                Name        = $managedName
+                PolicyStore = 'PersistentStore'
                 Direction   = $desiredState.Direction
-                Protocol    = $desiredState.Protocol
-                LocalPort   = $Port
                 Action      = $desiredState.Action
-                Profile     = 'Any'
                 Enabled     = $desiredState.Enabled
+                Protocol    = $desiredState.Protocol
+                LocalPort   = $desiredState.LocalPort
+                ErrorAction = 'Stop'
+                Confirm     = $false
             }
 
-            New-NetFirewallRule @newRuleParams | Out-Null
+            if (-not $hasRule) {
+                $newRuleParams = $writeParams.Clone()
+                $newRuleParams.DisplayName = $RuleName
+                $newRuleParams.Profile     = 'Any'
 
-            Write-Verbose -Message "Applied firewall rule '$RuleName' for TCP port $Port."
+                New-NetFirewallRule @newRuleParams | Out-Null
+
+                Write-Verbose -Message (
+                    "Applied firewall rule '$managedName' for TCP port $Port."
+                )
+
+                return
+            }
+
+            $filters = @(Get-RulePortFilter -InputObject $existing)
+
+            if ($filters.Count -ne 1) {
+                throw "Cannot capture the current port filter for '$managedName'."
+            }
+
+            $oldProtocol = [string]$filters[0].Protocol
+
+            if ($oldProtocol -eq '6') {
+                $oldProtocol = 'TCP'
+            }
+
+            if ($oldProtocol -eq '17') {
+                $oldProtocol = 'UDP'
+            }
+
+            $oldPorts = [string[]]@($filters[0].LocalPort)
+
+            if ($oldProtocol -notin @('TCP', 'UDP') -or
+                $oldPorts.Count -eq 0 -or $oldPorts -contains '')
+            {
+                throw (
+                    "Cannot safely restore the current protocol and " +
+                    "ports for '$managedName'."
+                )
+            }
+
+            $restoreParams = $writeParams.Clone()
+            $restoreParams.Direction      = [string]$existing.Direction
+            $restoreParams.Action         = [string]$existing.Action
+            $restoreParams.Enabled        = [string]$existing.Enabled
+            $restoreParams.Protocol       = $oldProtocol
+            $restoreParams.LocalPort      = $oldPorts
+            $restoreParams.NewDisplayName = [string]$existing.DisplayName
+
+            try {
+                $updateParams = $writeParams.Clone()
+                $updateParams.NewDisplayName = $RuleName
+
+                Set-NetFirewallRule @updateParams | Out-Null
+
+                $updatedRules = @(Get-FirewallRule @lookupParams)
+
+                $compliantParams = @{
+                    Rules        = $updatedRules
+                    DesiredState = $desiredState
+                    ErrorAction  = 'Stop'
+                }
+
+                $isCompliant = Test-FirewallRuleCompliant @compliantParams
+
+                if ($updatedRules.Count -ne 1 -or -not $isCompliant -or
+                    $updatedRules[0].DisplayName -cne $RuleName
+                ) {
+                    throw (
+                        "Firewall rule '$managedName' did not match " +
+                        "the requested state after update."
+                    )
+                }
+            } catch {
+                $updateFailure = $_
+
+                try {
+                    Set-NetFirewallRule @restoreParams | Out-Null
+                } catch {
+                    throw [System.AggregateException]::new(
+                        "Firewall rule '$managedName' update and rollback both failed.",
+                        [System.Exception[]]@($updateFailure.Exception, $_.Exception)
+                    )
+                }
+
+                throw $updateFailure
+            }
+
+            Write-Verbose -Message (
+                "Applied firewall rule '$managedName' for TCP port $Port."
+            )
         } catch {
             $PSCmdlet.ThrowTerminatingError(
                 [System.Management.Automation.ErrorRecord]::new(
                     $_.Exception,
                     'SetFirewallRuleFailed',
                     [System.Management.Automation.ErrorCategory]::InvalidOperation,
-                    $RuleName
+                    $managedName
                 )
             )
         }
