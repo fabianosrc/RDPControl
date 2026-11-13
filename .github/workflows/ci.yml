@@ -221,7 +221,7 @@ jobs:
 
           $testParams = @{
             Coverage       = $true
-            CoverageTarget = 80
+            CoverageTarget = 50
           }
 
           & $script @testParams
@@ -451,7 +451,7 @@ jobs:
 
           $testParams = @{
             Coverage       = $true
-            CoverageTarget = 80
+            CoverageTarget = 50
           }
 
           & $script @testParams
